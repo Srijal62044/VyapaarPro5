@@ -1,0 +1,6 @@
+{
+  "name": "VyapaarPro",
+  "description": "Premium digital services agency platform for websites, web applications, apps, design, branding, and digital growth.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
