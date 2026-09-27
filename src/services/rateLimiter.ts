@@ -6,7 +6,11 @@ export type RateLimitAction =
   | 'forgot_password'
   | 'contact'
   | 'service_request'
-  | 'file_upload';
+  | 'file_upload'
+  | 'store_checkout'
+  | 'store_payment_verify'
+  | 'store_download'
+  | 'store_product_upload';
 
 export interface RateLimitConfig {
   maxRequests: number;
@@ -20,6 +24,10 @@ export const RATE_LIMIT_RULES: Record<RateLimitAction, RateLimitConfig> = {
   contact: { maxRequests: 5, windowSeconds: 600 }, // 5 submissions per 10 mins
   service_request: { maxRequests: 10, windowSeconds: 3600 }, // 10 requests per hour
   file_upload: { maxRequests: 10, windowSeconds: 3600 }, // 10 uploads per hour
+  store_checkout: { maxRequests: 10, windowSeconds: 900 }, // 10 checkouts per 15 mins
+  store_payment_verify: { maxRequests: 15, windowSeconds: 900 }, // 15 verifications per 15 mins
+  store_download: { maxRequests: 30, windowSeconds: 900 }, // 30 downloads per 15 mins
+  store_product_upload: { maxRequests: 10, windowSeconds: 3600 }, // 10 product uploads per hour
 };
 
 export interface RateLimitResult {

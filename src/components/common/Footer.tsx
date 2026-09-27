@@ -116,8 +116,13 @@ export const Footer: React.FC = () => {
 
           {/* Col 4: Agency & Work */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Company</h4>
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Company & Store</h4>
             <ul className="space-y-2 text-xs">
+              <li>
+                <Link to="/store" className="hover:text-indigo-400 transition text-indigo-300 font-medium">
+                  Digital Product Store
+                </Link>
+              </li>
               <li>
                 <Link to="/about" className="hover:text-indigo-400 transition">
                   About VyapaarPro
@@ -136,6 +141,11 @@ export const Footer: React.FC = () => {
               <li>
                 <Link to="/contact" className="hover:text-indigo-400 transition">
                   Contact & Consultation
+                </Link>
+              </li>
+              <li>
+                <Link to="/app/downloads" className="hover:text-indigo-400 transition">
+                  Customer Downloads
                 </Link>
               </li>
               <li>

@@ -16,6 +16,8 @@ import {
   X,
   ShieldAlert,
   Lock,
+  ShoppingBag,
+  Package,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { BrandLogo } from '../components/common/BrandLogo';
@@ -98,6 +100,8 @@ export const AdminLayout: React.FC = () => {
     { label: 'Service Catalogue', href: '/admin/services', icon: Sparkles },
     { label: 'Service Requests', href: '/admin/requests', icon: Inbox },
     { label: 'Projects & Milestones', href: '/admin/projects', icon: FolderKanban },
+    { label: 'Digital Store', href: '/admin/store', icon: ShoppingBag },
+    { label: 'Store Products', href: '/admin/store/products', icon: Package },
     { label: 'Client Directory', href: '/admin/clients', icon: Users },
     { label: 'Portfolio Showcase', href: '/admin/portfolio', icon: Image },
     { label: 'Inquiries & Messages', href: '/admin/messages', icon: MessageSquare },

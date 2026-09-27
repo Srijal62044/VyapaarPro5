@@ -35,6 +35,10 @@ export default async function handler(req: any, res: any) {
       contact: { maxRequests: 5, windowSeconds: 600 },
       service_request: { maxRequests: 10, windowSeconds: 3600 },
       file_upload: { maxRequests: 10, windowSeconds: 3600 },
+      store_checkout: { maxRequests: 10, windowSeconds: 900 },
+      store_payment_verify: { maxRequests: 15, windowSeconds: 900 },
+      store_download: { maxRequests: 30, windowSeconds: 900 },
+      store_product_upload: { maxRequests: 10, windowSeconds: 3600 },
     };
 
     const rule = RATE_LIMIT_RULES[action] || { maxRequests: 10, windowSeconds: 900 };

@@ -13,6 +13,8 @@ import {
   MessageSquare,
   Menu,
   X,
+  ShoppingBag,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -60,6 +62,8 @@ export const ClientLayout: React.FC = () => {
     { label: 'Overview', href: '/app', icon: Layers },
     { label: 'My Requests', href: '/app/requests', icon: FileText },
     { label: 'Active Projects', href: '/app/projects', icon: Briefcase },
+    { label: 'Store Orders', href: '/app/orders', icon: ShoppingBag },
+    { label: 'My Downloads', href: '/app/downloads', icon: Download },
     { label: 'Account Profile', href: '/app/profile', icon: User },
   ];
 

@@ -34,6 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
 
   const navLinks = [
     { label: 'Services', href: '/services' },
+    { label: 'Store', href: '/store' },
     { label: 'Portfolio', href: '/portfolio' },
     { label: 'About Agency', href: '/about' },
     { label: 'Contact', href: '/contact' },

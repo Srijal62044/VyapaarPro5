@@ -252,3 +252,132 @@ export interface NotificationItem {
   is_read: boolean;
   created_at: string;
 }
+
+// ==============================================================================
+// DIGITAL STORE MODULE TYPES
+// ==============================================================================
+
+export interface StoreCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type StoreProductStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+
+export interface StoreProduct {
+  id: string;
+  category_id?: string | null;
+  category_name?: string;
+  name: string;
+  slug: string;
+  short_description: string;
+  description: string;
+  price_paise: number; // Stored in integer paise (e.g. 49900 for ₹499.00)
+  compare_at_price_paise?: number | null;
+  thumbnail_path?: string | null;
+  thumbnail_url?: string | null;
+  product_file_path?: string | null;
+  file_name?: string | null;
+  file_size_bytes?: number | null;
+  mime_type?: string | null;
+  status: StoreProductStatus;
+  featured: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type StoreOrderStatus =
+  | 'CREATED'
+  | 'PAYMENT_PENDING'
+  | 'PAID'
+  | 'PAYMENT_FAILED'
+  | 'CANCELLED'
+  | 'REFUNDED';
+
+export interface StoreOrderItem {
+  id: string;
+  order_id: string;
+  product_id?: string | null;
+  product_name_snapshot: string;
+  unit_price_paise: number;
+  quantity: number;
+  total_paise: number;
+  created_at?: string;
+  product?: StoreProduct;
+}
+
+export type StorePaymentStatus =
+  | 'CREATED'
+  | 'PENDING'
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'REFUNDED';
+
+export interface StorePayment {
+  id: string;
+  order_id: string;
+  gateway: string;
+  gateway_order_id?: string | null;
+  gateway_payment_id?: string | null;
+  gateway_reference?: string | null;
+  amount_paise: number;
+  currency: string;
+  status: StorePaymentStatus;
+  raw_reference_metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StoreOrder {
+  id: string;
+  user_id?: string | null;
+  order_number: string; // e.g. VP-ORD-A9B28D14
+  subtotal_paise: number;
+  discount_paise: number;
+  total_paise: number;
+  currency: string;
+  status: StoreOrderStatus;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  idempotency_key?: string;
+  items?: StoreOrderItem[];
+  payments?: StorePayment[];
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface StoreDownload {
+  id: string;
+  order_id: string;
+  order_item_id?: string | null;
+  user_id?: string | null;
+  product_id?: string | null;
+  product_name?: string;
+  file_name?: string | null;
+  file_size_bytes?: number | null;
+  download_count: number;
+  last_downloaded_at?: string | null;
+  revoked_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+  order?: StoreOrder;
+  product?: StoreProduct;
+}
+
+export interface StoreDashboardStats {
+  total_products: number;
+  published_products: number;
+  draft_products: number;
+  total_orders: number;
+  paid_orders: number;
+  pending_payments: number;
+  total_revenue_paise: number;
+}
+

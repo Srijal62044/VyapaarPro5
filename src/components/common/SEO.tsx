@@ -4,14 +4,16 @@ import { useSettings } from '../../contexts/SettingsContext';
 interface SEOProps {
   title?: string;
   description?: string;
+  ogImage?: string;
+  canonicalUrl?: string;
 }
 
-export const SEO: React.FC<SEOProps> = ({ title, description }) => {
+export const SEO: React.FC<SEOProps> = ({ title, description, ogImage, canonicalUrl }) => {
   const { settings } = useSettings();
 
   useEffect(() => {
     const appName = settings?.name || 'VyapaarPro';
-    const pageTitle = title ? `${title} | ${appName}` : `${appName} | Digital Services Agency`;
+    const pageTitle = title ? (title.includes(appName) ? title : `${title} | ${appName}`) : `${appName} | Digital Services Agency`;
     const pageDesc = description || settings?.tagline || 'High-performance digital engineering & agency platform.';
 
     document.title = pageTitle;
@@ -30,6 +32,26 @@ export const SEO: React.FC<SEOProps> = ({ title, description }) => {
     let ogDesc = document.querySelector('meta[property="og:description"]');
     if (ogDesc) ogDesc.setAttribute('content', pageDesc);
 
+    if (ogImage) {
+      let ogImgMeta = document.querySelector('meta[property="og:image"]');
+      if (!ogImgMeta) {
+        ogImgMeta = document.createElement('meta');
+        ogImgMeta.setAttribute('property', 'og:image');
+        document.head.appendChild(ogImgMeta);
+      }
+      ogImgMeta.setAttribute('content', ogImage);
+    }
+
+    if (canonicalUrl) {
+      let canonicalLink = document.querySelector("link[rel='canonical']") as HTMLLinkElement;
+      if (!canonicalLink) {
+        canonicalLink = document.createElement('link');
+        canonicalLink.setAttribute('rel', 'canonical');
+        document.head.appendChild(canonicalLink);
+      }
+      canonicalLink.setAttribute('href', canonicalUrl);
+    }
+
     const iconUrl = settings?.favicon_url || settings?.logo_url;
     if (iconUrl) {
       let linkIcon = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
@@ -40,7 +62,7 @@ export const SEO: React.FC<SEOProps> = ({ title, description }) => {
       }
       linkIcon.href = iconUrl;
     }
-  }, [title, description, settings]);
+  }, [title, description, ogImage, canonicalUrl, settings]);
 
   return null;
 };
