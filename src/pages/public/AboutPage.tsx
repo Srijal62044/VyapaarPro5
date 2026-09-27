@@ -212,27 +212,27 @@ export const AboutPage: React.FC = () => {
         {/* ABOUT THE DEVELOPER SECTION */}
         <section id="developer" className="p-6 sm:p-10 rounded-2xl bg-slate-900 border border-slate-800 space-y-8 shadow-2xl">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4 sm:space-x-5">
               {dev?.avatar_url ? (
                 <img
                   src={dev.avatar_url}
                   alt={dev.name || 'Developer Avatar'}
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-slate-700 shadow-md"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-slate-700 shadow-md shrink-0"
                 />
               ) : (
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white font-bold text-xl sm:text-2xl shadow-lg shadow-indigo-600/20">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white font-bold text-xl sm:text-2xl shadow-lg shadow-indigo-600/20 shrink-0">
                   {dev?.name ? dev.name.split(' ').map((n) => n[0]).join('').substring(0, 2) : 'SK'}
                 </div>
               )}
               <div>
-                <div className="inline-flex items-center space-x-1.5 text-xs text-indigo-400 font-semibold mb-1">
+                <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold mb-1.5">
                   <Terminal className="w-3.5 h-3.5" />
-                  <span>Lead Engineering</span>
+                  <span>About the Developer</span>
                 </div>
-                <h2 className="text-xl sm:text-3xl font-extrabold text-white">
-                  About the Developer
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  {dev?.name || 'SRIJAL KUMAR'}
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                <p className="text-xs sm:text-sm text-indigo-300 font-medium mt-0.5">
                   {dev?.role || 'Founder & Developer, VyapaarPro'}
                 </p>
               </div>
