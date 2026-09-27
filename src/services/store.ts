@@ -532,54 +532,94 @@ if (typeof window !== 'undefined') {
   }
 }
 
-// Safe JSON local storage helpers
+// Safe JSON local storage helpers with in-memory fallback for restricted/in-app browsers
+const memoryStorage = new Map<string, string>();
+
+function safeGetItem(key: string): string | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+  } catch (e) {
+    // In-app browsers / private mode can throw SecurityError
+  }
+  return memoryStorage.get(key) || null;
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
+      return;
+    }
+  } catch (e) {
+    // QuotaExceededError or SecurityError in restricted WebViews
+  }
+  memoryStorage.set(key, value);
+}
+
+function safeRemoveItem(key: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+  } catch (e) {
+    // Ignore
+  }
+  memoryStorage.delete(key);
+}
+
 function readStorage<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = safeGetItem(key);
     if (!raw) return fallback;
     return JSON.parse(raw);
   } catch (err) {
-    console.error(`Error reading ${key} from storage:`, err);
     return fallback;
   }
 }
 
 function writeStorage<T>(key: string, data: T): void {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    safeSetItem(key, JSON.stringify(data));
   } catch (err) {
-    console.error(`Error writing ${key} to storage:`, err);
+    // Ignore storage serialization errors
   }
 }
 
 // Ensure default seeds exist in storage on first load
 function initializeLocalStorage() {
-  if (!localStorage.getItem(STORAGE_KEYS.SETTINGS)) {
-    writeStorage(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.CATEGORIES)) {
-    writeStorage(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.SERVICES)) {
-    writeStorage(STORAGE_KEYS.SERVICES, DEFAULT_SERVICES);
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.REQUESTS)) {
-    writeStorage(STORAGE_KEYS.REQUESTS, INITIAL_REQUESTS);
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.PROJECTS)) {
-    writeStorage(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.PORTFOLIO)) {
-    writeStorage(STORAGE_KEYS.PORTFOLIO, DEFAULT_PORTFOLIO);
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.MESSAGES)) {
-    writeStorage(STORAGE_KEYS.MESSAGES, INITIAL_MESSAGES);
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.CLIENTS)) {
-    writeStorage(STORAGE_KEYS.CLIENTS, INITIAL_CLIENTS);
-  }
-  if (!localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS)) {
-    writeStorage(STORAGE_KEYS.NOTIFICATIONS, []);
+  try {
+    if (!safeGetItem(STORAGE_KEYS.SETTINGS)) {
+      writeStorage(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+    }
+    if (!safeGetItem(STORAGE_KEYS.CATEGORIES)) {
+      writeStorage(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
+    }
+    if (!safeGetItem(STORAGE_KEYS.SERVICES)) {
+      writeStorage(STORAGE_KEYS.SERVICES, DEFAULT_SERVICES);
+    }
+    if (!safeGetItem(STORAGE_KEYS.REQUESTS)) {
+      writeStorage(STORAGE_KEYS.REQUESTS, INITIAL_REQUESTS);
+    }
+    if (!safeGetItem(STORAGE_KEYS.PROJECTS)) {
+      writeStorage(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
+    }
+    if (!safeGetItem(STORAGE_KEYS.PORTFOLIO)) {
+      writeStorage(STORAGE_KEYS.PORTFOLIO, DEFAULT_PORTFOLIO);
+    }
+    if (!safeGetItem(STORAGE_KEYS.MESSAGES)) {
+      writeStorage(STORAGE_KEYS.MESSAGES, INITIAL_MESSAGES);
+    }
+    if (!safeGetItem(STORAGE_KEYS.CLIENTS)) {
+      writeStorage(STORAGE_KEYS.CLIENTS, INITIAL_CLIENTS);
+    }
+    if (!safeGetItem(STORAGE_KEYS.NOTIFICATIONS)) {
+      writeStorage(STORAGE_KEYS.NOTIFICATIONS, []);
+    }
+  } catch (e) {
+    // Non-blocking in restricted in-app browser contexts
   }
 }
 

@@ -37,6 +37,44 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_STORAGE_KEY = 'vp_current_user_v1';
 const LOCAL_USERS_KEY = 'vp_registered_users_v1';
 
+// In-memory fallback for restricted mobile / in-app browsers
+const authMemoryStorage = new Map<string, string>();
+
+function safeAuthGet(key: string): string | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+  } catch (e) {
+    // Handled in restricted WebViews
+  }
+  return authMemoryStorage.get(key) || null;
+}
+
+function safeAuthSet(key: string, value: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
+      return;
+    }
+  } catch (e) {
+    // Handled in restricted WebViews
+  }
+  authMemoryStorage.set(key, value);
+}
+
+function safeAuthRemove(key: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+  } catch (e) {
+    // Handled
+  }
+  authMemoryStorage.delete(key);
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -114,7 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             const finalProfile = sanitizeProfile(activeProfile);
             setProfile(finalProfile);
-            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalProfile));
+            safeAuthSet(AUTH_STORAGE_KEY, JSON.stringify(finalProfile));
             setIsLoading(false);
             return;
           }
@@ -125,7 +163,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Check local storage session
       try {
-        const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+        const stored = safeAuthGet(AUTH_STORAGE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
           setProfile(sanitizeProfile(parsed));
@@ -208,7 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           const userProf: UserProfile = sanitizeProfile(activeProf);
           setProfile(userProf);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userProf));
+          safeAuthSet(AUTH_STORAGE_KEY, JSON.stringify(userProf));
           setIsLoading(false);
           return { success: true };
         }
@@ -222,7 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Check registered users in offline mode
       let localUsers: UserProfile[] = [];
       try {
-        localUsers = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
+        localUsers = JSON.parse(safeAuthGet(LOCAL_USERS_KEY) || '[]');
       } catch (e) {
         localUsers = [];
       }
@@ -240,7 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       setProfile(resolvedProfile);
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(resolvedProfile));
+      safeAuthSet(AUTH_STORAGE_KEY, JSON.stringify(resolvedProfile));
       setIsLoading(false);
       return { success: true };
     } catch (err: any) {
@@ -338,7 +376,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           setProfile(newProfile);
-          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newProfile));
+          safeAuthSet(AUTH_STORAGE_KEY, JSON.stringify(newProfile));
           setIsLoading(false);
           return { success: true };
         }
@@ -347,7 +385,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Local fallback registration (when Supabase is offline/unconfigured)
       let localUsers: UserProfile[] = [];
       try {
-        localUsers = JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '[]');
+        localUsers = JSON.parse(safeAuthGet(LOCAL_USERS_KEY) || '[]');
       } catch (e) {
         localUsers = [];
       }
@@ -371,9 +409,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       localUsers.push(newProfile);
-      localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(localUsers));
+      safeAuthSet(LOCAL_USERS_KEY, JSON.stringify(localUsers));
       setProfile(newProfile);
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newProfile));
+      safeAuthSet(AUTH_STORAGE_KEY, JSON.stringify(newProfile));
       setIsLoading(false);
       return { success: true };
     } catch (err: any) {
@@ -391,7 +429,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     setProfile(null);
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    safeAuthRemove(AUTH_STORAGE_KEY);
   };
 
   const updateProfile = async (data: Partial<UserProfile>): Promise<boolean> => {
@@ -407,7 +445,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     setProfile(updated);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updated));
+    safeAuthSet(AUTH_STORAGE_KEY, JSON.stringify(updated));
 
     if (isSupabaseConfigured && supabase) {
       try {
