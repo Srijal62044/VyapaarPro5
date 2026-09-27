@@ -11,6 +11,7 @@ import {
   Calendar,
   ExternalLink,
   MessageSquare,
+  RefreshCw,
 } from 'lucide-react';
 import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
@@ -24,25 +25,30 @@ export const StorePaymentResultPage: React.FC = () => {
 
   const [order, setOrder] = useState<StoreOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchOrder = async (isManual = false) => {
+    if (!orderId) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (isManual) setIsRefreshing(true);
+    else setIsLoading(true);
+
+    try {
+      const data = await storeDataService.getOrderById(orderId);
+      setOrder(data);
+    } catch (err) {
+      console.error('Failed to load order status:', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadOrder() {
-      if (!orderId) {
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        const data = await storeDataService.getOrderById(orderId);
-        setOrder(data);
-      } catch (err) {
-        console.error('Failed to load order:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadOrder();
+    fetchOrder();
   }, [orderId]);
 
   if (isLoading) {
@@ -50,7 +56,7 @@ export const StorePaymentResultPage: React.FC = () => {
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
         <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
         <h2 className="text-sm font-semibold text-white">Loading Order Status</h2>
-        <p className="text-xs text-slate-400 mt-1">Retrieving transaction details...</p>
+        <p className="text-xs text-slate-400 mt-1">Retrieving authoritative transaction details...</p>
       </div>
     );
   }
@@ -64,7 +70,7 @@ export const StorePaymentResultPage: React.FC = () => {
           </div>
           <h2 className="text-xl font-bold text-white">Order Reference Not Found</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            No valid order reference was provided in the return URL. If you completed a payment, check your email or visit your customer orders dashboard.
+            No valid order reference was provided in the return URL. If you completed a payment, check your email or visit your customer dashboard.
           </p>
           <div className="pt-2 space-y-2">
             <Link
@@ -87,6 +93,9 @@ export const StorePaymentResultPage: React.FC = () => {
 
   const priceRupees = Math.round(order.total_paise / 100);
   const isPaid = order.status === 'PAID';
+  const isFailed = order.status === 'PAYMENT_FAILED' || order.status === 'CANCELLED';
+  const latestPayment = order.payments?.[0];
+  const gatewayOrderId = latestPayment?.gateway_order_id;
 
   return (
     <div className="min-h-[75vh] py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
@@ -99,6 +108,10 @@ export const StorePaymentResultPage: React.FC = () => {
             <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-950/40">
               <CheckCircle2 className="w-8 h-8" />
             </div>
+          ) : isFailed ? (
+            <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto shadow-lg shadow-rose-950/40">
+              <AlertCircle className="w-8 h-8" />
+            </div>
           ) : (
             <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-950/40">
               <Clock className="w-8 h-8" />
@@ -110,12 +123,18 @@ export const StorePaymentResultPage: React.FC = () => {
               Order {order.order_number}
             </span>
             <h1 className="text-2xl font-black text-white">
-              {isPaid ? 'Payment Confirmed & Verified' : 'Order Received'}
+              {isPaid
+                ? 'Payment Confirmed & Verified'
+                : isFailed
+                ? 'Payment Failed or Cancelled'
+                : 'Payment Awaiting Confirmation'}
             </h1>
             <p className="text-xs text-slate-300 mt-1 max-w-sm mx-auto leading-relaxed">
               {isPaid
                 ? 'Your transaction has been verified. Your digital product is ready for instant download.'
-                : 'Thank you for your order. Your transaction reference has been logged and is being processed.'}
+                : isFailed
+                ? 'The payment could not be completed or was cancelled. You can retry the checkout anytime.'
+                : 'Your order has been recorded. Once your payment is authoritatively confirmed, your download access will unlock automatically.'}
             </p>
           </div>
         </div>
@@ -127,12 +146,21 @@ export const StorePaymentResultPage: React.FC = () => {
             <span className="font-mono font-bold text-white">{order.order_number}</span>
           </div>
 
+          {gatewayOrderId && (
+            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+              <span className="text-slate-400">FamGateway Order ID</span>
+              <span className="font-mono text-indigo-300">{gatewayOrderId}</span>
+            </div>
+          )}
+
           <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-            <span className="text-slate-400">Order Status</span>
+            <span className="text-slate-400">Backend Status</span>
             <span
               className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                 isPaid
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : isFailed
+                  ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                   : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
               }`}
             >
@@ -151,6 +179,20 @@ export const StorePaymentResultPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Refresh button if still pending */}
+        {!isPaid && !isFailed && (
+          <div className="text-center">
+            <button
+              onClick={() => fetchOrder(true)}
+              disabled={isRefreshing}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>Check for Payment Confirmation</span>
+            </button>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="space-y-3 pt-2">
           {isPaid ? (
@@ -166,7 +208,7 @@ export const StorePaymentResultPage: React.FC = () => {
               to={`/app/orders/${order.id}`}
               className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center justify-center space-x-2"
             >
-              <span>View Order Status in Portal</span>
+              <span>View Order Details in Client Portal</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           )}

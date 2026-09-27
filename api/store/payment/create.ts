@@ -116,24 +116,26 @@ export default async function handler(req: any, res: any) {
         }
 
         if (gatewayRes.ok && rawResponseData) {
-          // Extract payment URL from response fields
+          // Extract payment / checkout URL from response fields (handles FamGateway nested response.data)
           paymentUrl =
+            rawResponseData.response?.data?.checkout_url ||
+            rawResponseData.data?.checkout_url ||
+            rawResponseData.checkout_url ||
+            rawResponseData.response?.data?.payment_url ||
+            rawResponseData.data?.payment_url ||
             rawResponseData.payment_url ||
             rawResponseData.url ||
-            rawResponseData.checkout_url ||
-            rawResponseData.data?.payment_url ||
-            rawResponseData.data?.url ||
-            rawResponseData.data?.checkout_url ||
             rawResponseData.link ||
             '';
 
+          // Extract FamGateway order ID (e.g. fg_CDHSVD0F)
           gatewayOrderId =
+            rawResponseData.response?.data?.order_id ||
+            rawResponseData.data?.order_id ||
             rawResponseData.order_id ||
             rawResponseData.id ||
             rawResponseData.transaction_id ||
-            rawResponseData.data?.order_id ||
-            rawResponseData.data?.id ||
-            `FAM-${Date.now()}`;
+            '';
         } else {
           console.error('FamGateway API error response:', rawResponseData);
           return res.status(502).json({
