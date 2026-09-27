@@ -18,6 +18,7 @@ export const LoginPage: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMsg('');
     setIsSubmitting(true);
 

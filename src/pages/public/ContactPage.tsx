@@ -11,6 +11,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { dataService } from '../../services/store';
+import { rateLimiter } from '../../services/rateLimiter';
 import { SEO } from '../../components/common/SEO';
 import { useSettings } from '../../contexts/SettingsContext';
 
@@ -35,6 +36,7 @@ export const ContactPage: React.FC = () => {
   const [selectedService, setSelectedService] = useState('General Inquiry & Consultation');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
+  const [honeypot, setHoneypot] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedCode, setSubmittedCode] = useState<string | null>(null);
@@ -42,7 +44,15 @@ export const ContactPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setErrorMessage('');
+
+    // 1. Honeypot check (hidden field to trap spam bots)
+    if (honeypot) {
+      setSubmittedCode('VP-MSG-BOTTRAP');
+      return;
+    }
 
     if (!name.trim() || !email.trim() || !subject.trim() || !message.trim()) {
       setErrorMessage('Please fill in your name, email, subject, and project details.');
@@ -51,6 +61,14 @@ export const ContactPage: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+      // 2. Server-side Rate Limit: 5 submissions per 10 mins per IP/email
+      const rl = await rateLimiter.checkRateLimit('contact', email.trim());
+      if (!rl.allowed) {
+        setErrorMessage(rl.error || 'Too many requests. Please try again later.');
+        setIsSubmitting(false);
+        return;
+      }
+
       const formattedSubject = selectedService && selectedService !== 'General Inquiry & Consultation'
         ? `[${selectedService}] ${subject.trim()}`
         : subject.trim();
@@ -65,7 +83,7 @@ export const ContactPage: React.FC = () => {
       setSubmittedCode(created.reference_code);
     } catch (err: any) {
       console.error('Contact form submission error:', err);
-      setErrorMessage('Failed to send message. Please reach us directly via WhatsApp or email.');
+      setErrorMessage(err?.message || 'Failed to send message. Please reach us directly via WhatsApp or email.');
     } finally {
       setIsSubmitting(false);
     }
@@ -210,6 +228,18 @@ export const ContactPage: React.FC = () => {
                       {errorMessage}
                     </div>
                   )}
+
+                  {/* Honeypot field for bot spam trap */}
+                  <input
+                    type="text"
+                    name="_hp_security_check"
+                    value={honeypot}
+                    onChange={(e) => setHoneypot(e.target.value)}
+                    tabIndex={-1}
+                    autoComplete="off"
+                    style={{ position: 'absolute', opacity: 0, height: 0, width: 0, zIndex: -1, pointerEvents: 'none' }}
+                    aria-hidden="true"
+                  />
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>

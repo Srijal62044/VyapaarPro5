@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { UserProfile, UserRole } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { rateLimiter } from '../services/rateLimiter';
 
 // Single authorized administrator email for VyapaarPro
 export const AUTHORIZED_ADMIN_EMAIL = (
@@ -148,6 +149,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isAuthAdmin = isAuthorizedAdminEmail(cleanEmail);
 
     try {
+      // 1. Rate Limit Enforcement (10 attempts per 15 mins per IP/identifier)
+      const rl = await rateLimiter.checkRateLimit('login', cleanEmail);
+      if (!rl.allowed) {
+        setIsLoading(false);
+        return {
+          success: false,
+          error: rl.error || 'Too many requests. Please try again later.',
+        };
+      }
+
       if (isSupabaseConfigured && supabase && password) {
         const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
         if (error) {
@@ -251,6 +262,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const assignedRole: UserRole = isAuthAdmin ? 'super_admin' : 'customer';
 
     try {
+      // 1. Rate Limit Enforcement (5 attempts per 15 mins per IP/identifier)
+      const rl = await rateLimiter.checkRateLimit('signup', cleanEmail);
+      if (!rl.allowed) {
+        setIsLoading(false);
+        return {
+          success: false,
+          error: rl.error || 'Too many requests. Please try again later.',
+        };
+      }
+
       if (isSupabaseConfigured && supabase && password) {
         // 1. Supabase Auth signup
         const { data, error } = await supabase.auth.signUp({

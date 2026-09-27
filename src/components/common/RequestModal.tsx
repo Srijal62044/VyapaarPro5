@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle, Send, Upload, Sparkles, MessageSquare, ArrowRight } from 'lucide-react';
+import { X, CheckCircle, Send, Upload, Sparkles, MessageSquare, ArrowRight, Trash2 } from 'lucide-react';
 import { ServiceItem } from '../../types';
 import { dataService } from '../../services/store';
+import { rateLimiter } from '../../services/rateLimiter';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
 
@@ -67,14 +68,27 @@ export const RequestModal: React.FC<RequestModalProps> = ({
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setErrorMessage('');
     if (e.target.files) {
       const selected = Array.from(e.target.files);
-      setFiles((prev) => [...prev, ...selected]);
+      const combined = [...files, ...selected];
+      const validation = rateLimiter.validateFiles(combined);
+      if (!validation.valid) {
+        setErrorMessage(validation.error || 'Invalid file uploaded.');
+        return;
+      }
+      setFiles(combined);
     }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setErrorMessage('');
 
     if (!clientName.trim() || !clientEmail.trim() || !clientPhone.trim() || !requirements.trim()) {
@@ -82,8 +96,37 @@ export const RequestModal: React.FC<RequestModalProps> = ({
       return;
     }
 
+    // 1. Validate files if present
+    if (files.length > 0) {
+      const validation = rateLimiter.validateFiles(files);
+      if (!validation.valid) {
+        setErrorMessage(validation.error || 'Invalid files attached.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
+      const rateLimitId = profile?.id || clientEmail.toLowerCase().trim();
+
+      // 2. Rate limit for file uploads (10 operations / hour per user/IP)
+      if (files.length > 0) {
+        const uploadRl = await rateLimiter.checkRateLimit('file_upload', rateLimitId);
+        if (!uploadRl.allowed) {
+          setErrorMessage(uploadRl.error || 'Too many file uploads. Please try again later.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // 3. Rate limit for service request creation (10 requests / hour per user/IP)
+      const reqRl = await rateLimiter.checkRateLimit('service_request', rateLimitId);
+      if (!reqRl.allowed) {
+        setErrorMessage(reqRl.error || 'Too many requests. Please try again later.');
+        setIsSubmitting(false);
+        return;
+      }
+
       const finalServiceName =
         serviceName ||
         servicesList.find((s) => s.id === selectedServiceId)?.name ||
@@ -114,7 +157,7 @@ export const RequestModal: React.FC<RequestModalProps> = ({
       setSubmittedReference(created.reference_code);
     } catch (err: any) {
       console.error('Request submission error:', err);
-      setErrorMessage('Failed to submit request. Please try again or reach us via WhatsApp directly.');
+      setErrorMessage(err?.message || 'Failed to submit request. Please try again or reach us via WhatsApp directly.');
     } finally {
       setIsSubmitting(false);
     }
@@ -384,7 +427,7 @@ export const RequestModal: React.FC<RequestModalProps> = ({
                     multiple
                     onChange={handleFileUpload}
                     className="hidden"
-                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
                   />
                 </label>
                 {files.length > 0 && (
@@ -392,10 +435,20 @@ export const RequestModal: React.FC<RequestModalProps> = ({
                     {files.map((f, i) => (
                       <div
                         key={i}
-                        className="text-xs text-indigo-300 bg-slate-950 px-2 py-1 rounded flex justify-between items-center"
+                        className="text-xs text-indigo-300 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800 flex justify-between items-center"
                       >
-                        <span>{f.name}</span>
-                        <span className="text-slate-500">{(f.size / 1024).toFixed(0)} KB</span>
+                        <span className="truncate max-w-[200px] sm:max-w-xs">{f.name}</span>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <span className="text-slate-500 text-[11px]">{(f.size / 1024).toFixed(0)} KB</span>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(i)}
+                            className="text-slate-500 hover:text-rose-400 p-0.5 rounded cursor-pointer transition"
+                            title="Remove file"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

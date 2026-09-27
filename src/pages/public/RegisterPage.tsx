@@ -19,7 +19,13 @@ export const RegisterPage: React.FC = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setErrorMsg('');
+
+    if (fullName.trim().length < 2) {
+      setErrorMsg('Please enter your full name (minimum 2 characters).');
+      return;
+    }
 
     if (password.length < 6) {
       setErrorMsg('Password should be at least 6 characters.');

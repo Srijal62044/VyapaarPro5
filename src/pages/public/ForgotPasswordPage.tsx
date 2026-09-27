@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Sparkles, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { rateLimiter } from '../../services/rateLimiter';
 import { SEO } from '../../components/common/SEO';
 
 export const ForgotPasswordPage: React.FC = () => {
@@ -12,12 +13,23 @@ export const ForgotPasswordPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
-    setIsSubmitting(true);
+    if (isSubmitting) return;
 
+    setErrorMsg('');
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Rate Limit Enforcement: 3 requests per 15 mins per IP/identifier
+    setIsSubmitting(true);
     try {
+      const rl = await rateLimiter.checkRateLimit('forgot_password', cleanEmail);
+      if (!rl.allowed) {
+        setErrorMsg(rl.error || 'Too many requests. Please try again later.');
+        setIsSubmitting(false);
+        return;
+      }
+
       if (isSupabaseConfigured && supabase) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
           redirectTo: `${window.location.origin}/login`,
         });
         if (error) {
