@@ -4,20 +4,40 @@ import crypto from 'crypto';
 /**
  * FamGateway Webhook Handler Endpoint
  *
- * POST /api/famgateway-webhook
+ * Endpoint: POST https://vyapaarpro.in/api/famgateway-webhook
  *
  * Receives automatic transaction notifications from FamGateway:
- * Verifies X-FamGateway-Signature using FAMGATEWAY_API_KEY as HMAC-SHA256 secret.
- * Atomically marks order PAID and unlocks downloads exactly once (idempotent).
+ * - Verifies X-FamGateway-Signature using FAMGATEWAY_API_KEY as HMAC-SHA256 secret.
+ * - Atomically marks order PAID, saves UTR / transaction info, and fulfills downloads idempotently.
+ * - Handles OPTIONS preflight & GET health ping without redirects.
  */
 export default async function handler(req: any, res: any) {
+  // 1. CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-FamGateway-Signature, X-Signature, X-Api-Key');
+
+  // 2. Handle OPTIONS Preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // 3. Handle GET Health Check (Webhook Testers often ping GET first)
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      status: 'active',
+      service: 'FamGateway Webhook Receiver',
+      message: 'Endpoint is active and ready to receive POST events.',
+    });
+  }
+
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+    res.setHeader('Allow', 'GET, POST, OPTIONS');
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   try {
-    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
 
     const famApiKey = process.env.FAMGATEWAY_API_KEY;
@@ -26,7 +46,7 @@ export default async function handler(req: any, res: any) {
       req.headers['x-signature'] ||
       req.headers['signature'];
 
-    // 1. HMAC-SHA256 Signature Verification if signature header provided
+    // 4. HMAC-SHA256 Signature Verification if signature header provided
     if (famApiKey && signature) {
       const expectedSignature = crypto
         .createHmac('sha256', famApiKey.trim())
@@ -48,6 +68,10 @@ export default async function handler(req: any, res: any) {
     const paymentTime = payload.payment_time_ist || new Date().toISOString();
 
     if (!gatewayOrderId) {
+      // If it's a test ping payload without order_id (e.g. { event: "test" })
+      if (body.event === 'test' || body.test === true || body.type === 'ping') {
+        return res.status(200).json({ received: true, test: true });
+      }
       return res.status(400).json({ error: 'Missing order_id in webhook payload.' });
     }
 
@@ -59,12 +83,12 @@ export default async function handler(req: any, res: any) {
       '';
 
     if (!supabaseUrl || !supabaseKey) {
-      return res.status(200).json({ received: true });
+      return res.status(200).json({ received: true, notice: 'Database unconfigured' });
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 2. Locate payment record by FamGateway order_id
+    // 5. Locate payment record by FamGateway order_id
     const { data: paymentRecord, error: payErr } = await supabase
       .from('store_payments')
       .select('*, store_orders(*, store_order_items(*))')
@@ -81,12 +105,12 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ received: true, notice: 'Associated order not found' });
     }
 
-    // 3. Idempotency: If order is already PAID, acknowledge without re-processing
+    // 6. Idempotency: If order is already PAID, acknowledge without re-processing
     if (order.status === 'PAID') {
       return res.status(200).json({ received: true, status: 'already_processed' });
     }
 
-    // 4. Process payment success
+    // 7. Process payment success
     if (gatewayStatus === 'success') {
       // Validate amount
       const expectedRupees = Number((order.total_paise / 100).toFixed(2));
@@ -172,7 +196,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({ received: true });
   } catch (err: any) {
-    console.error('Webhook error:', err);
+    console.error('Webhook processing error:', err);
     return res.status(500).json({ error: 'Internal Webhook Error' });
   }
 }

@@ -1,5 +1,23 @@
 {
+  "trailingSlash": false,
   "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization, X-FamGateway-Signature, X-Signature, X-Api-Key"
+        }
+      ]
+    },
     {
       "source": "/assets/(.*)",
       "headers": [
@@ -28,10 +46,6 @@
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
     {
       "source": "/((?!api/|assets/|favicon\\.ico|.*\\.[\\w]+$).*)",
       "destination": "/index.html"
