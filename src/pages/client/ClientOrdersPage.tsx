@@ -10,6 +10,9 @@ import {
   Calendar,
   CreditCard,
   PackageOpen,
+  Send,
+  XCircle,
+  Layers,
 } from 'lucide-react';
 import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
@@ -41,36 +44,75 @@ export const ClientOrdersPage: React.FC = () => {
     switch (status) {
       case 'PAID':
         return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
             <CheckCircle2 className="w-3 h-3" />
             <span>PAID</span>
+          </span>
+        );
+      case 'DELIVERED':
+        return (
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <CheckCircle2 className="w-3 h-3" />
+            <span>DELIVERED</span>
+          </span>
+        );
+      case 'PAYMENT_REVIEW':
+        return (
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <Clock className="w-3 h-3" />
+            <span>UNDER REVIEW</span>
           </span>
         );
       case 'PAYMENT_PENDING':
       case 'CREATED':
         return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
             <Clock className="w-3 h-3" />
-            <span>PENDING PAYMENT</span>
+            <span>PAYMENT PENDING</span>
           </span>
         );
-      case 'PAYMENT_FAILED':
+      case 'REJECTED':
         return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <XCircle className="w-3 h-3" />
+            <span>REJECTED</span>
+          </span>
+        );
+      case 'CANCELLED':
+        return (
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
             <AlertCircle className="w-3 h-3" />
-            <span>FAILED</span>
-          </span>
-        );
-      case 'REFUNDED':
-        return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">
-            <span>REFUNDED</span>
+            <span>CANCELLED</span>
           </span>
         );
       default:
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300">
+          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-300">
             {status}
+          </span>
+        );
+    }
+  };
+
+  const getFulfillmentBadge = (status?: string) => {
+    switch (status) {
+      case 'DELIVERED':
+        return (
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-800/40">
+            Delivered
+          </span>
+        );
+      case 'READY_FOR_DELIVERY':
+        return (
+          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-800/40">
+            Ready For Delivery
+          </span>
+        );
+      case 'UNFULFILLED':
+      default:
+        return (
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-800/60 px-2 py-0.5 rounded border border-slate-700/40">
+            Unfulfilled
           </span>
         );
     }
@@ -88,7 +130,7 @@ export const ClientOrdersPage: React.FC = () => {
             <span>My Store Orders</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Track your digital product purchases, invoice receipts, and transaction records.
+            Track your digital product purchases, review statuses, and invoice receipts.
           </p>
         </div>
 
@@ -119,15 +161,18 @@ export const ClientOrdersPage: React.FC = () => {
         <div className="space-y-4">
           {orders.map((order) => {
             const priceRupees = Math.round(order.total_paise / 100);
+            const canDownload = order.status === 'PAID' || order.status === 'DELIVERED';
+
             return (
               <div
                 key={order.id}
                 className="bg-slate-900/80 border border-slate-800/80 hover:border-slate-700 rounded-2xl p-5 sm:p-6 transition flex flex-col md:flex-row md:items-center justify-between gap-4"
               >
                 <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <span className="font-mono text-sm font-bold text-white">{order.order_number}</span>
                     {getStatusBadge(order.status)}
+                    {getFulfillmentBadge(order.fulfillment_status)}
                     <span className="text-xs text-slate-500 flex items-center space-x-1">
                       <Calendar className="w-3 h-3" />
                       <span>{new Date(order.created_at).toLocaleDateString('en-IN', { dateStyle: 'medium' })}</span>
@@ -155,7 +200,7 @@ export const ClientOrdersPage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    {order.status === 'PAID' && (
+                    {canDownload && (
                       <Link
                         to="/app/downloads"
                         className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold hover:bg-emerald-500/20 transition flex items-center space-x-1"
@@ -169,7 +214,7 @@ export const ClientOrdersPage: React.FC = () => {
                       to={`/app/orders/${order.id}`}
                       className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition flex items-center space-x-1"
                     >
-                      <span>View Order</span>
+                      <span>View Details</span>
                       <ArrowRight className="w-3 h-3" />
                     </Link>
                   </div>

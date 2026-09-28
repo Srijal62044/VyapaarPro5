@@ -9,11 +9,10 @@ import {
   ArrowRight,
   ShieldCheck,
   Calendar,
-  ExternalLink,
   MessageSquare,
   RefreshCw,
-  CreditCard,
-  Lock,
+  FileCode,
+  Check,
 } from 'lucide-react';
 import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
@@ -54,6 +53,8 @@ export const StorePaymentResultPage: React.FC = () => {
         if (updatedOrder) {
           if (verifyData.status === 'PAID') {
             updatedOrder.status = 'PAID';
+          } else if (verifyData.status === 'PAYMENT_REVIEW') {
+            updatedOrder.status = 'PAYMENT_REVIEW';
           }
           setOrder(updatedOrder);
         }
@@ -73,25 +74,24 @@ export const StorePaymentResultPage: React.FC = () => {
     checkVerification();
   }, [orderId]);
 
-  // Automatic background polling while status is PAYMENT_PENDING (every 3.5s for up to 50 iterations)
+  // Polling for review updates
   useEffect(() => {
-    if (!order || order.status === 'PAID' || order.status === 'PAYMENT_FAILED') {
+    if (!order || order.status === 'PAID' || order.status === 'REJECTED' || order.status === 'CANCELLED' || order.status === 'DELIVERED') {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       return;
     }
 
-    if (order.status === 'PAYMENT_PENDING' || order.status === 'CREATED') {
+    if (order.status === 'PAYMENT_PENDING' || order.status === 'CREATED' || order.status === 'PAYMENT_REVIEW') {
       pollTimerRef.current = setInterval(() => {
         setPollCount((prev) => {
           if (prev >= 45) {
-            // Stop polling after ~2.5 minutes
             clearInterval(pollTimerRef.current);
             return prev;
           }
           checkVerification(false);
           return prev + 1;
         });
-      }, 3500);
+      }, 5000);
 
       return () => {
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
@@ -103,7 +103,7 @@ export const StorePaymentResultPage: React.FC = () => {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
         <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <h2 className="text-sm font-semibold text-white">Verifying Transaction Status</h2>
+        <h2 className="text-sm font-semibold text-white">Checking Transaction Status</h2>
         <p className="text-xs text-slate-400 mt-1">Connecting to server verification engine...</p>
       </div>
     );
@@ -140,8 +140,12 @@ export const StorePaymentResultPage: React.FC = () => {
   }
 
   const priceRupees = Math.round(order.total_paise / 100);
-  const isPaid = order.status === 'PAID';
-  const isFailed = order.status === 'PAYMENT_FAILED' || order.status === 'CANCELLED';
+  const isPaid = order.status === 'PAID' || order.status === 'DELIVERED';
+  const isRejected = order.status === 'REJECTED' || order.status === 'CANCELLED';
+  const isUnderReview = !isPaid && !isRejected; // PAYMENT_REVIEW, PAYMENT_PENDING, CREATED
+  const productName = order.items && order.items.length > 0
+    ? order.items.map((i) => i.product_name_snapshot).join(', ')
+    : 'Digital Product';
   const latestPayment = order.payments?.[0];
   const gatewayOrderId = latestPayment?.gateway_order_id;
   const transactionId = latestPayment?.gateway_payment_id;
@@ -157,7 +161,7 @@ export const StorePaymentResultPage: React.FC = () => {
             <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-950/40">
               <CheckCircle2 className="w-8 h-8" />
             </div>
-          ) : isFailed ? (
+          ) : isRejected ? (
             <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto shadow-lg shadow-rose-950/40">
               <AlertCircle className="w-8 h-8" />
             </div>
@@ -173,81 +177,74 @@ export const StorePaymentResultPage: React.FC = () => {
             </span>
             <h1 className="text-2xl font-black text-white">
               {isPaid
-                ? 'Payment Confirmed & Verified'
-                : isFailed
-                ? 'Payment Failed or Expired'
-                : 'Payment Awaiting Confirmation'}
+                ? 'Payment Confirmed & Delivered'
+                : isRejected
+                ? 'Payment Rejected'
+                : 'Payment Under Review'}
             </h1>
-            <p className="text-xs text-slate-300 mt-1 max-w-sm mx-auto leading-relaxed font-normal">
+            <p className="text-xs text-slate-300 mt-1.5 max-w-md mx-auto leading-relaxed font-normal">
               {isPaid
-                ? 'Your transaction has been verified server-side. Your digital product is unlocked and ready for instant download.'
-                : isFailed
-                ? 'The payment session expired or could not be verified. You can generate a new checkout session to retry.'
-                : 'Your order is recorded. We are awaiting payment confirmation from FamGateway. This page updates automatically.'}
+                ? 'Your transaction has been confirmed and approved. Your digital product files have been delivered and access is permanently unlocked.'
+                : isRejected
+                ? order.payment_rejection_reason || 'The transaction could not be verified or was rejected during review.'
+                : 'Your payment has been received and is currently under review. You will be contacted within a few hours.'}
             </p>
           </div>
         </div>
 
         {/* Order Details Card */}
         <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-3 text-xs">
-          <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-            <span className="text-slate-400">Order Number</span>
+          <div className="flex justify-between items-center pb-2.5 border-b border-slate-800">
+            <span className="text-slate-400">Order ID</span>
             <span className="font-mono font-bold text-white">{order.order_number}</span>
           </div>
 
-          {gatewayOrderId && (
-            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-              <span className="text-slate-400">FamGateway Order ID</span>
-              <span className="font-mono text-indigo-300">{gatewayOrderId}</span>
-            </div>
-          )}
+          <div className="flex justify-between items-center pb-2.5 border-b border-slate-800">
+            <span className="text-slate-400">Product</span>
+            <span className="font-semibold text-white max-w-[260px] truncate text-right">{productName}</span>
+          </div>
 
-          {transactionId && isPaid && (
-            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-              <span className="text-slate-400">Transaction / UTR Ref</span>
-              <span className="font-mono text-emerald-400">{transactionId}</span>
-            </div>
-          )}
+          <div className="flex justify-between items-center pb-2.5 border-b border-slate-800">
+            <span className="text-slate-400">Amount</span>
+            <span className="font-bold text-white">₹{priceRupees.toLocaleString('en-IN')} INR</span>
+          </div>
 
-          <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-            <span className="text-slate-400">Status</span>
+          <div className="flex justify-between items-center pb-2.5 border-b border-slate-800">
+            <span className="text-slate-400">Payment Status</span>
             <span
               className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                 isPaid
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : isFailed
+                  : isRejected
                   ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                   : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
               }`}
             >
-              {order.status}
+              {isPaid ? 'PAID / DELIVERED' : isRejected ? 'REJECTED' : 'Under Review'}
             </span>
           </div>
 
-          <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-            <span className="text-slate-400">Total Amount</span>
-            <span className="font-bold text-white">₹{priceRupees.toLocaleString('en-IN')} INR</span>
+          <div className="flex justify-between items-center pb-2.5 border-b border-slate-800">
+            <span className="text-slate-400">Date & Time</span>
+            <span className="text-slate-200">
+              {new Date(order.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+            </span>
           </div>
 
-          <div className="flex justify-between items-center">
-            <span className="text-slate-400">Customer Email</span>
-            <span className="text-slate-200">{order.customer_email || '—'}</span>
-          </div>
+          {gatewayOrderId && (
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">FamGateway Order ID</span>
+              <span className="font-mono text-indigo-300">{gatewayOrderId}</span>
+            </div>
+          )}
         </div>
 
-        {/* Manual Refresh button if pending */}
-        {!isPaid && !isFailed && (
-          <div className="text-center">
-            <button
-              onClick={() => checkVerification(true)}
-              disabled={isVerifying}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
-              <span>{isVerifying ? 'Checking Gateway Server...' : 'Check Payment Status Now'}</span>
-            </button>
-            <p className="text-[10px] text-slate-500 mt-1.5">
-              Auto-checking with FamGateway verification server...
+        {/* Note that product will be delivered after confirmation */}
+        {isUnderReview && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start space-x-2.5">
+            <Clock className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+            <p className="leading-relaxed">
+              <strong className="text-amber-200">Note:</strong> Your digital product package will be delivered and download access unlocked immediately after payment confirmation.
             </p>
           </div>
         )}
@@ -262,20 +259,12 @@ export const StorePaymentResultPage: React.FC = () => {
               <Download className="w-4 h-4" />
               <span>Access Your Downloads Vault</span>
             </Link>
-          ) : isFailed ? (
-            <Link
-              to="/store"
-              className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center justify-center space-x-2"
-            >
-              <span>Back to Store to Retry Checkout</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
           ) : (
             <Link
               to={`/app/orders/${order.id}`}
               className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center justify-center space-x-2"
             >
-              <span>View Order in Client Portal</span>
+              <span>View Order in Customer Dashboard</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           )}
@@ -294,7 +283,7 @@ export const StorePaymentResultPage: React.FC = () => {
               className="py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 text-xs font-semibold text-center transition flex items-center justify-center space-x-1"
             >
               <MessageSquare className="w-3.5 h-3.5" />
-              <span>WhatsApp Help</span>
+              <span>WhatsApp Support</span>
             </a>
           </div>
         </div>
@@ -303,7 +292,7 @@ export const StorePaymentResultPage: React.FC = () => {
         <div className="pt-2 text-center">
           <p className="text-[11px] text-slate-500 flex items-center justify-center space-x-1">
             <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Digital product access is permanently unlocked upon authoritative verification.</span>
+            <span>VyapaarPro Secure Checkout • Manual Verification Guarantee</span>
           </p>
         </div>
       </div>

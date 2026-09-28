@@ -1,14 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * FamGateway Authoritative Payment Verification Endpoint
+ * FamGateway Payment Verification Endpoint
  *
  * GET/POST /api/store/payment/verify?order_id={internalOrderId}
  *
- * Authoritatively verifies payment status using FamGateway's official endpoint:
- * GET https://famgateway.in/api/verify-order.php?api_key=KEY&order_id=fg_...
- *
- * Atomically marks order PAID, updates transaction logs, and unlocks digital downloads.
+ * Under the Manual Review architecture:
+ * - Checks status with FamGateway.
+ * - When gateway reports success, updates order to PAYMENT_REVIEW and records gateway transaction info.
+ * - Digital download fulfillment is unlocked ONLY after an authorized admin approves the payment.
  */
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -39,7 +39,7 @@ export default async function handler(req: any, res: any) {
     if (!supabase) {
       return res.status(200).json({
         orderId,
-        status: 'PAYMENT_PENDING',
+        status: 'PAYMENT_REVIEW',
         verified: false,
         message: 'Database unconfigured',
       });
@@ -56,19 +56,31 @@ export default async function handler(req: any, res: any) {
       return res.status(404).json({ error: 'Order not found in database.' });
     }
 
-    // 2. If already authoritatively marked PAID, return verified idempotently
-    if (order.status === 'PAID') {
+    // 2. If already manually approved (PAID or DELIVERED) or REJECTED by admin
+    if (order.status === 'PAID' || order.status === 'DELIVERED') {
       const latestPayment = order.store_payments?.[0];
       return res.status(200).json({
         orderId: order.id,
         orderNumber: order.order_number,
-        status: 'PAID',
+        status: order.status,
+        fulfillmentStatus: order.fulfillment_status,
         verified: true,
         amountPaise: order.total_paise,
         currency: order.currency,
         gatewayOrderId: latestPayment?.gateway_order_id || null,
         gatewayPaymentId: latestPayment?.gateway_payment_id || null,
-        message: 'Payment verified successfully.',
+        message: 'Payment has been confirmed and approved by administrator.',
+      });
+    }
+
+    if (order.status === 'REJECTED') {
+      return res.status(200).json({
+        orderId: order.id,
+        orderNumber: order.order_number,
+        status: 'REJECTED',
+        verified: false,
+        rejectionReason: order.payment_rejection_reason,
+        message: `Payment review rejected: ${order.payment_rejection_reason || 'Could not be verified.'}`,
       });
     }
 
@@ -82,7 +94,7 @@ export default async function handler(req: any, res: any) {
         orderNumber: order.order_number,
         status: order.status,
         verified: false,
-        message: 'No external gateway order ID associated with this order.',
+        message: 'No gateway order ID associated with this order.',
       });
     }
 
@@ -126,55 +138,50 @@ export default async function handler(req: any, res: any) {
       }
     } catch (networkErr: any) {
       console.error('FamGateway verification network error:', networkErr);
-      return res.status(200).json({
-        orderId: order.id,
-        orderNumber: order.order_number,
-        status: order.status,
-        verified: false,
-        message: 'Network timeout contacting FamGateway verification server.',
-      });
     }
 
     // 5. Evaluate authoritative FamGateway response
     const paymentData = famGatewayData?.data || famGatewayData?.response?.data || famGatewayData;
 
     if (famGatewayStatus === 'success') {
-      // Verify returned order ID matches
-      const returnedOrderId = paymentData?.order_id || paymentData?.orderId || gatewayOrderId;
-      if (returnedOrderId && returnedOrderId.trim() !== gatewayOrderId.trim()) {
-        console.error(`Mismatch between gateway order IDs: expected ${gatewayOrderId}, received ${returnedOrderId}`);
-        return res.status(400).json({ error: 'Gateway order reference mismatch.' });
-      }
-
-      // Verify amount (calculate from database, never trust arbitrary figures)
-      const expectedRupees = Number((order.total_paise / 100).toFixed(2));
-      const returnedAmount = Number(paymentData?.amount || paymentData?.payable_amount || expectedRupees);
-
-      if (Math.abs(expectedRupees - returnedAmount) > 0.05) {
-        console.error(`Amount mismatch: expected ₹${expectedRupees}, gateway reported ₹${returnedAmount}`);
-        return res.status(400).json({ error: 'Payment amount mismatch between database and gateway.' });
-      }
-
       const transactionId = paymentData?.transaction_id || paymentData?.utr || `TXN-${Date.now()}`;
       const utr = paymentData?.utr || null;
       const senderName = paymentData?.sender_name || null;
       const paymentTime = paymentData?.payment_time_ist || new Date().toISOString();
 
-      // Atomically update store_orders to PAID
-      await supabase
-        .from('store_orders')
-        .update({
-          status: 'PAID',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', order.id);
+      // Set order to PAYMENT_REVIEW (Awaiting manual admin approval)
+      if (order.status !== 'PAYMENT_REVIEW') {
+        await supabase
+          .from('store_orders')
+          .update({
+            status: 'PAYMENT_REVIEW',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', order.id);
 
-      // Atomically update store_payments
+        // Audit log
+        await supabase.from('store_order_audit_logs').insert({
+          order_id: order.id,
+          action: 'PAYMENT_SUBMITTED_FOR_REVIEW',
+          previous_status: order.status,
+          new_status: 'PAYMENT_REVIEW',
+          details: {
+            gatewayOrderId,
+            transactionId,
+            utr,
+            senderName,
+            paymentTime,
+            verifiedVia: 'verify-order.php',
+          },
+        });
+      }
+
+      // Update store_payments with transaction data
       if (latestPayment?.id) {
         await supabase
           .from('store_payments')
           .update({
-            status: 'SUCCESS',
+            status: 'REVIEW',
             gateway_payment_id: transactionId,
             gateway_reference: utr || transactionId,
             raw_reference_metadata: {
@@ -184,65 +191,26 @@ export default async function handler(req: any, res: any) {
               sender_name: senderName,
               payment_time_ist: paymentTime,
               verificationResponse: famGatewayData,
-              verifiedAt: new Date().toISOString(),
+              reviewedSubmissionAt: new Date().toISOString(),
             },
             updated_at: new Date().toISOString(),
           })
           .eq('id', latestPayment.id);
-      } else {
-        await supabase.from('store_payments').insert({
-          order_id: order.id,
-          gateway: 'famgateway',
-          gateway_order_id: gatewayOrderId,
-          gateway_payment_id: transactionId,
-          gateway_reference: utr,
-          amount_paise: order.total_paise,
-          currency: order.currency,
-          status: 'SUCCESS',
-          raw_reference_metadata: {
-            transaction_id: transactionId,
-            utr,
-            sender_name: senderName,
-            payment_time_ist: paymentTime,
-            verificationResponse: famGatewayData,
-            verifiedAt: new Date().toISOString(),
-          },
-        });
-      }
-
-      // Idempotently create store_downloads for each purchased item
-      const items = order.store_order_items || [];
-      for (const item of items) {
-        const { data: existingDl } = await supabase
-          .from('store_downloads')
-          .select('id')
-          .eq('order_id', order.id)
-          .eq('order_item_id', item.id)
-          .single();
-
-        if (!existingDl) {
-          await supabase.from('store_downloads').insert({
-            order_id: order.id,
-            order_item_id: item.id,
-            user_id: order.user_id || null,
-            product_id: item.product_id,
-            download_count: 0,
-          });
-        }
       }
 
       return res.status(200).json({
         orderId: order.id,
         orderNumber: order.order_number,
-        status: 'PAID',
-        verified: true,
+        status: 'PAYMENT_REVIEW',
+        verified: false,
+        requiresAdminApproval: true,
         amountPaise: order.total_paise,
         currency: order.currency,
         transactionId,
         utr,
         senderName,
         paymentTime,
-        message: 'Payment verified successfully. Downloads unlocked.',
+        message: 'Your payment has been received and is currently under review. You will be contacted within a few hours.',
       });
     }
 
@@ -250,43 +218,28 @@ export default async function handler(req: any, res: any) {
       await supabase
         .from('store_orders')
         .update({
-          status: 'PAYMENT_FAILED',
+          status: 'CANCELLED',
           updated_at: new Date().toISOString(),
         })
         .eq('id', order.id);
 
-      if (latestPayment?.id) {
-        await supabase
-          .from('store_payments')
-          .update({
-            status: 'FAILED',
-            raw_reference_metadata: {
-              ...(latestPayment.raw_reference_metadata || {}),
-              expiredAt: new Date().toISOString(),
-              verificationResponse: famGatewayData,
-            },
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', latestPayment.id);
-      }
-
       return res.status(200).json({
         orderId: order.id,
         orderNumber: order.order_number,
-        status: 'PAYMENT_FAILED',
+        status: 'CANCELLED',
         verified: false,
-        message: 'Payment session has expired. Please create a new order to retry.',
+        message: 'Payment session expired. Please create a new checkout to retry.',
       });
     }
 
-    // Default: pending
+    // Default: Order is in review / pending
     return res.status(200).json({
       orderId: order.id,
       orderNumber: order.order_number,
-      status: 'PAYMENT_PENDING',
+      status: order.status === 'CREATED' ? 'PAYMENT_REVIEW' : order.status,
       verified: false,
       gatewayOrderId,
-      message: 'Payment is pending confirmation from FamGateway.',
+      message: 'Your payment has been received and is currently under review.',
     });
   } catch (err: any) {
     console.error('verify endpoint error:', err);

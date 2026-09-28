@@ -165,20 +165,22 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ error: 'Amount mismatch' });
       }
 
-      // Atomically update order to PAID
-      await supabase
-        .from('store_orders')
-        .update({
-          status: 'PAID',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', order.id);
+      // Update order to PAYMENT_REVIEW for manual admin verification
+      if (order.status !== 'PAID' && order.status !== 'DELIVERED') {
+        await supabase
+          .from('store_orders')
+          .update({
+            status: 'PAYMENT_REVIEW',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', order.id);
+      }
 
-      // Update payment record
+      // Update payment record with evidence from gateway
       await supabase
         .from('store_payments')
         .update({
-          status: 'SUCCESS',
+          status: 'REVIEW',
           gateway_payment_id: transactionId,
           gateway_reference: utr || transactionId,
           raw_reference_metadata: {
@@ -194,29 +196,24 @@ export default async function handler(req: any, res: any) {
         })
         .eq('id', paymentRecord.id);
 
-      // Fulfill digital downloads exactly once
-      const items = order.store_order_items || [];
-      for (const item of items) {
-        const { data: existingDl } = await supabase
-          .from('store_downloads')
-          .select('id')
-          .eq('order_id', order.id)
-          .eq('order_item_id', item.id)
-          .single();
+      // Audit Log for webhook submission
+      await supabase.from('store_order_audit_logs').insert({
+        order_id: order.id,
+        action: 'PAYMENT_SUBMITTED_FOR_REVIEW',
+        previous_status: order.status,
+        new_status: 'PAYMENT_REVIEW',
+        details: {
+          gatewayOrderId,
+          transactionId,
+          utr,
+          senderName,
+          paymentTime,
+          source: 'FamGateway Webhook Notification',
+        },
+      });
 
-        if (!existingDl) {
-          await supabase.from('store_downloads').insert({
-            order_id: order.id,
-            order_item_id: item.id,
-            user_id: order.user_id || null,
-            product_id: item.product_id,
-            download_count: 0,
-          });
-        }
-      }
-
-      console.log(`[Webhook] Order ${order.order_number} marked PAID.`);
-      return res.status(200).json({ received: true, processed: true });
+      console.log(`[Webhook] Order ${order.order_number} transitioned to PAYMENT_REVIEW for manual admin approval.`);
+      return res.status(200).json({ received: true, processed: true, status: 'PAYMENT_REVIEW' });
     }
 
     if (gatewayStatus === 'expired') {

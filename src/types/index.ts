@@ -295,10 +295,16 @@ export interface StoreProduct {
 export type StoreOrderStatus =
   | 'CREATED'
   | 'PAYMENT_PENDING'
+  | 'PAYMENT_REVIEW'
   | 'PAID'
-  | 'PAYMENT_FAILED'
-  | 'CANCELLED'
-  | 'REFUNDED';
+  | 'REJECTED'
+  | 'DELIVERED'
+  | 'CANCELLED';
+
+export type StoreFulfillmentStatus =
+  | 'UNFULFILLED'
+  | 'READY_FOR_DELIVERY'
+  | 'DELIVERED';
 
 export interface StoreOrderItem {
   id: string;
@@ -315,8 +321,10 @@ export interface StoreOrderItem {
 export type StorePaymentStatus =
   | 'CREATED'
   | 'PENDING'
+  | 'REVIEW'
   | 'SUCCESS'
   | 'FAILED'
+  | 'REJECTED'
   | 'REFUNDED';
 
 export interface StorePayment {
@@ -334,6 +342,25 @@ export interface StorePayment {
   updated_at?: string;
 }
 
+export interface StoreOrderAuditLog {
+  id: string;
+  order_id: string;
+  admin_user_id?: string | null;
+  admin_email?: string | null;
+  action:
+    | 'ORDER_CREATED'
+    | 'PAYMENT_SUBMITTED_FOR_REVIEW'
+    | 'PAYMENT_APPROVED'
+    | 'PAYMENT_REJECTED'
+    | 'DELIVERY_SENT_WHATSAPP'
+    | 'ORDER_DELIVERED'
+    | 'ADMIN_NOTE_ADDED';
+  previous_status?: string | null;
+  new_status?: string | null;
+  details?: Record<string, any> | null;
+  created_at: string;
+}
+
 export interface StoreOrder {
   id: string;
   user_id?: string | null;
@@ -343,12 +370,30 @@ export interface StoreOrder {
   total_paise: number;
   currency: string;
   status: StoreOrderStatus;
+  fulfillment_status?: StoreFulfillmentStatus;
   customer_name?: string;
   customer_email?: string;
   customer_phone?: string;
   idempotency_key?: string;
+  
+  // Manual Review & Approval Fields
+  payment_reviewed_at?: string | null;
+  payment_reviewed_by?: string | null;
+  payment_rejection_reason?: string | null;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  rejected_at?: string | null;
+  rejected_by?: string | null;
+  
+  // Delivery Fields
+  delivered_at?: string | null;
+  delivered_by?: string | null;
+  delivery_notes?: string | null;
+  admin_notes?: string | null;
+
   items?: StoreOrderItem[];
   payments?: StorePayment[];
+  audit_logs?: StoreOrderAuditLog[];
   created_at: string;
   updated_at?: string;
 }
@@ -378,6 +423,8 @@ export interface StoreDashboardStats {
   total_orders: number;
   paid_orders: number;
   pending_payments: number;
+  pending_reviews: number;
+  total_delivered: number;
   total_revenue_paise: number;
 }
 

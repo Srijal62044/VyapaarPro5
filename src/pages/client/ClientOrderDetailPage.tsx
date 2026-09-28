@@ -11,6 +11,8 @@ import {
   Calendar,
   CreditCard,
   ExternalLink,
+  XCircle,
+  FileCode,
 } from 'lucide-react';
 import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
@@ -69,6 +71,9 @@ export const ClientOrderDetailPage: React.FC = () => {
   }
 
   const priceRupees = Math.round(order.total_paise / 100);
+  const isPaid = order.status === 'PAID' || order.status === 'DELIVERED';
+  const isRejected = order.status === 'REJECTED';
+  const isUnderReview = order.status === 'PAYMENT_REVIEW';
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -84,7 +89,7 @@ export const ClientOrderDetailPage: React.FC = () => {
           <span>Back to Orders List</span>
         </Link>
 
-        {order.status === 'PAID' && (
+        {isPaid && (
           <Link
             to="/app/downloads"
             className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition flex items-center space-x-1.5"
@@ -110,21 +115,42 @@ export const ClientOrderDetailPage: React.FC = () => {
             </p>
           </div>
 
-          <div className="text-left sm:text-right">
-            <span className="text-xs text-slate-400 block mb-1">Status</span>
-            {order.status === 'PAID' ? (
+          <div className="flex flex-col sm:items-end space-y-1">
+            <span className="text-xs text-slate-400 block">Payment Status</span>
+            {isPaid ? (
               <span className="inline-flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>PAID & VERIFIED</span>
               </span>
+            ) : isRejected ? (
+              <span className="inline-flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                <XCircle className="w-3.5 h-3.5" />
+                <span>REJECTED</span>
+              </span>
             ) : (
               <span className="inline-flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                 <Clock className="w-3.5 h-3.5" />
-                <span>{order.status}</span>
+                <span>{isUnderReview ? 'PAYMENT UNDER REVIEW' : order.status}</span>
               </span>
             )}
+            <span className="text-[10px] text-slate-500 font-mono">
+              Fulfillment: {order.fulfillment_status || 'UNFULFILLED'}
+            </span>
           </div>
         </div>
+
+        {/* Notice for orders under review */}
+        {isUnderReview && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start space-x-3">
+            <Clock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-white mb-0.5">Payment Under Review</h4>
+              <p className="leading-relaxed">
+                Your payment has been received and is currently under review. You will be contacted within a few hours, after which download access will be unlocked.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Itemized Products */}
         <div className="space-y-4">
@@ -136,9 +162,12 @@ export const ClientOrderDetailPage: React.FC = () => {
             {order.items && order.items.length > 0 ? (
               order.items.map((item) => (
                 <div key={item.id} className="py-3 flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-semibold text-white">{item.product_name_snapshot}</h4>
-                    <span className="text-[11px] text-slate-400">Qty: {item.quantity} • Perpetual License</span>
+                  <div className="flex items-center space-x-2">
+                    <FileCode className="w-4 h-4 text-indigo-400" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">{item.product_name_snapshot}</h4>
+                      <span className="text-[11px] text-slate-400">Qty: {item.quantity} • Perpetual License</span>
+                    </div>
                   </div>
                   <span className="text-sm font-bold text-white">
                     ₹{Math.round(item.total_paise / 100).toLocaleString('en-IN')}
@@ -170,7 +199,7 @@ export const ClientOrderDetailPage: React.FC = () => {
             <span>₹0</span>
           </div>
           <div className="pt-2 border-t border-slate-800 flex justify-between text-sm font-bold text-white">
-            <span>Total Paid</span>
+            <span>Total</span>
             <span className="text-base text-indigo-400">₹{priceRupees.toLocaleString('en-IN')} INR</span>
           </div>
         </div>
@@ -188,11 +217,11 @@ export const ClientOrderDetailPage: React.FC = () => {
 
           <div className="space-y-1 text-slate-400">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-              Payment Gateway
+              Payment Gateway Reference
             </span>
             <p className="text-white font-medium">FamGateway Online Checkout</p>
             <p className="font-mono text-[11px]">
-              Ref: {order.payments?.[0]?.gateway_payment_id || order.payments?.[0]?.gateway_order_id || 'Direct Verified'}
+              Ref: {order.payments?.[0]?.gateway_payment_id || order.payments?.[0]?.gateway_order_id || 'Manual Review Queue'}
             </p>
           </div>
         </div>

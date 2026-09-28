@@ -61,6 +61,7 @@ import { AdminStoreProductEditPage } from './pages/admin/AdminStoreProductEditPa
 import { AdminStoreCategoriesPage } from './pages/admin/AdminStoreCategoriesPage';
 import { AdminStoreOrdersPage } from './pages/admin/AdminStoreOrdersPage';
 import { AdminStoreOrderDetailPage } from './pages/admin/AdminStoreOrderDetailPage';
+import { AdminStorePaymentReviewsPage } from './pages/admin/AdminStorePaymentReviewsPage';
 
 export default function App() {
   return (
@@ -118,6 +119,7 @@ export default function App() {
 
               {/* Digital Store Admin Routes */}
               <Route path="store" element={<AdminStoreDashboard />} />
+              <Route path="store/reviews" element={<AdminStorePaymentReviewsPage />} />
               <Route path="store/products" element={<AdminStoreProductsPage />} />
               <Route path="store/products/new" element={<AdminStoreProductEditPage />} />
               <Route path="store/products/:id" element={<AdminStoreProductEditPage />} />

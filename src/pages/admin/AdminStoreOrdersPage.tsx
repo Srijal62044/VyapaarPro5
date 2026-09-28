@@ -100,11 +100,12 @@ export const AdminStoreOrdersPage: React.FC = () => {
             className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-violet-500"
           >
             <option value="all">All Statuses</option>
+            <option value="PAYMENT_REVIEW">PAYMENT REVIEW</option>
             <option value="PAID">PAID</option>
+            <option value="DELIVERED">DELIVERED</option>
             <option value="PAYMENT_PENDING">PAYMENT PENDING</option>
-            <option value="CREATED">CREATED</option>
-            <option value="PAYMENT_FAILED">PAYMENT FAILED</option>
-            <option value="REFUNDED">REFUNDED</option>
+            <option value="REJECTED">REJECTED</option>
+            <option value="CANCELLED">CANCELLED</option>
           </select>
         </div>
       </div>
@@ -148,14 +149,16 @@ export const AdminStoreOrdersPage: React.FC = () => {
                     <td className="py-3.5 px-4">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                          o.status === 'PAID'
+                          o.status === 'PAID' || o.status === 'DELIVERED'
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : o.status === 'PAYMENT_FAILED'
+                            : o.status === 'REJECTED' || o.status === 'CANCELLED'
                             ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            : o.status === 'PAYMENT_REVIEW'
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            : 'bg-slate-800 text-slate-300 border border-slate-700'
                         }`}
                       >
-                        {o.status}
+                        {o.status === 'PAYMENT_REVIEW' ? 'UNDER REVIEW' : o.status}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-slate-400">

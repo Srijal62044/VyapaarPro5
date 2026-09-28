@@ -88,11 +88,13 @@ export const AdminStoreOrderDetailPage: React.FC = () => {
 
         <span
           className={`px-3 py-1 rounded-full text-xs font-bold ${
-            order.status === 'PAID'
+            order.status === 'PAID' || order.status === 'DELIVERED'
               ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-              : order.status === 'PAYMENT_FAILED'
+              : order.status === 'REJECTED' || order.status === 'CANCELLED'
               ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-              : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              : order.status === 'PAYMENT_REVIEW'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              : 'bg-slate-800 text-slate-300 border border-slate-700'
           }`}
         >
           {order.status}

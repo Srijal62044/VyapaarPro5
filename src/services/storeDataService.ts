@@ -592,6 +592,58 @@ export const storeDataService = {
     return orders;
   },
 
+  async getAdminPaymentReviews(): Promise<StoreOrder[]> {
+    return this.getAdminOrders({ status: 'PAYMENT_REVIEW' });
+  },
+
+  async getOrderAuditLogs(orderId: string): Promise<any[]> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('store_order_audit_logs')
+          .select('*')
+          .eq('order_id', orderId)
+          .order('created_at', { ascending: false });
+
+        if (!error && data) return data;
+      } catch (err) {
+        console.warn('Supabase getOrderAuditLogs notice:', err);
+      }
+    }
+    return [];
+  },
+
+  async reviewOrder(params: {
+    orderId: string;
+    action: 'APPROVE_PAYMENT' | 'REJECT_PAYMENT' | 'MARK_DELIVERED' | 'LOG_WHATSAPP_SENT' | 'ADD_NOTE';
+    reason?: string;
+    deliveryNotes?: string;
+    adminNotes?: string;
+  }): Promise<{ success: boolean; message?: string; error?: string; order?: StoreOrder }> {
+    try {
+      const session = (await supabase?.auth.getSession())?.data.session;
+      const token = session?.access_token || '';
+
+      const res = await fetch('/api/store/admin/review-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(params),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Review action failed.');
+      }
+      return data;
+    } catch (err: any) {
+      console.error('storeDataService reviewOrder error:', err);
+      return { success: false, error: err.message || 'Error processing review action.' };
+    }
+  },
+
   // ============================================================================
   // 4. DOWNLOADS
   // ============================================================================
@@ -606,14 +658,16 @@ export const storeDataService = {
           .order('created_at', { ascending: false });
 
         if (!error && data) {
-          return data.map((d: any) => ({
-            ...d,
-            product_name: d.store_products?.name || 'Digital Product',
-            file_name: d.store_products?.file_name || null,
-            file_size_bytes: d.store_products?.file_size_bytes || null,
-            product: d.store_products || undefined,
-            order: d.store_orders || undefined,
-          })) as StoreDownload[];
+          return data
+            .filter((d: any) => d.store_orders?.status === 'PAID' || d.store_orders?.status === 'DELIVERED')
+            .map((d: any) => ({
+              ...d,
+              product_name: d.store_products?.name || 'Digital Product',
+              file_name: d.store_products?.file_name || null,
+              file_size_bytes: d.store_products?.file_size_bytes || null,
+              product: d.store_products || undefined,
+              order: d.store_orders || undefined,
+            })) as StoreDownload[];
         }
       } catch (err) {
         console.warn('Supabase getCustomerDownloads error:', err);
@@ -649,10 +703,12 @@ export const storeDataService = {
       published_products: products.filter((p) => p.status === 'PUBLISHED').length,
       draft_products: products.filter((p) => p.status === 'DRAFT').length,
       total_orders: orders.length,
-      paid_orders: orders.filter((o) => o.status === 'PAID').length,
+      paid_orders: orders.filter((o) => o.status === 'PAID' || o.status === 'DELIVERED').length,
       pending_payments: orders.filter((o) => o.status === 'PAYMENT_PENDING' || o.status === 'CREATED').length,
+      pending_reviews: orders.filter((o) => o.status === 'PAYMENT_REVIEW').length,
+      total_delivered: orders.filter((o) => o.fulfillment_status === 'DELIVERED' || o.status === 'DELIVERED').length,
       total_revenue_paise: orders
-        .filter((o) => o.status === 'PAID')
+        .filter((o) => o.status === 'PAID' || o.status === 'DELIVERED')
         .reduce((sum, o) => sum + (o.total_paise || 0), 0),
     };
   },

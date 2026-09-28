@@ -112,6 +112,19 @@ export const AdminStoreDashboard: React.FC = () => {
           <span className="text-[10px] text-slate-500 mt-1 block">Total Orders: {stats?.total_orders ?? 0}</span>
         </div>
 
+        {/* Pending Reviews */}
+        <Link
+          to="/admin/store/reviews"
+          className="bg-slate-900 border border-amber-500/30 hover:border-amber-500/60 p-5 rounded-2xl transition group"
+        >
+          <div className="flex items-center justify-between text-amber-400 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Payment Reviews</span>
+            <Clock className="w-4 h-4" />
+          </div>
+          <p className="text-2xl font-black text-amber-400">{stats?.pending_reviews ?? 0}</p>
+          <span className="text-[10px] text-amber-400/80 mt-1 block">Awaiting manual approval →</span>
+        </Link>
+
         {/* Published Products */}
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-violet-400 mb-2">
@@ -121,20 +134,21 @@ export const AdminStoreDashboard: React.FC = () => {
           <p className="text-2xl font-black text-white">{stats?.published_products ?? 0}</p>
           <span className="text-[10px] text-slate-500 mt-1 block">Drafts: {stats?.draft_products ?? 0}</span>
         </div>
-
-        {/* Pending Payments */}
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-          <div className="flex items-center justify-between text-amber-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Pending Orders</span>
-            <Clock className="w-4 h-4" />
-          </div>
-          <p className="text-2xl font-black text-white">{stats?.pending_payments ?? 0}</p>
-          <span className="text-[10px] text-slate-500 mt-1 block">Awaiting payment verification</span>
-        </div>
       </div>
 
       {/* Quick Navigation Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <Link
+          to="/admin/store/reviews"
+          className="p-5 rounded-2xl bg-amber-950/20 border border-amber-500/30 hover:border-amber-500/60 transition group"
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-amber-300 group-hover:text-amber-200">Payment Reviews</h3>
+            <ArrowRight className="w-4 h-4 text-amber-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition" />
+          </div>
+          <p className="text-xs text-amber-400/70 mt-1">Verify transactions and approve digital delivery.</p>
+        </Link>
+
         <Link
           to="/admin/store/products"
           className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-violet-500/50 transition group"
@@ -200,11 +214,13 @@ export const AdminStoreDashboard: React.FC = () => {
                     <td className="py-3">
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          o.status === 'PAID'
+                          o.status === 'PAID' || o.status === 'DELIVERED'
                             ? 'bg-emerald-500/10 text-emerald-400'
-                            : o.status === 'PAYMENT_FAILED'
+                            : o.status === 'REJECTED' || o.status === 'CANCELLED'
                             ? 'bg-rose-500/10 text-rose-400'
-                            : 'bg-amber-500/10 text-amber-400'
+                            : o.status === 'PAYMENT_REVIEW'
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                            : 'bg-slate-800 text-slate-300'
                         }`}
                       >
                         {o.status}
