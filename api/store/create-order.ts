@@ -10,8 +10,13 @@ export default async function handler(req: any, res: any) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
     const { productId, customerName, customerEmail, customerPhone, userId, idempotencyKey } = body;
 
-    if (!productId || !customerEmail) {
-      return res.status(400).json({ error: 'Product ID and customer email are required.' });
+    if (!productId || !customerEmail || !customerPhone) {
+      return res.status(400).json({ error: 'Product ID, customer email, and WhatsApp/mobile phone number are required.' });
+    }
+
+    const cleanPhone = (customerPhone || '').replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10) {
+      return res.status(400).json({ error: 'Please provide a valid 10-digit WhatsApp or mobile number.' });
     }
 
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';

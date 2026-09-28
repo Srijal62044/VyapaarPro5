@@ -118,13 +118,20 @@ export const StoreProductDeliveryDetails: React.FC<StoreProductDeliveryDetailsPr
     }
   };
 
-  const handleShareWhatsApp = () => {
+  const [adminNotice, setAdminNotice] = useState<string | null>(null);
+
+  const handleAdminSendWhatsApp = () => {
+    if (!isAdminView) return;
     if (order.customer_phone) {
+      if (hasFile && product?.file_name) {
+        setAdminNotice(
+          `WhatsApp message prepared. Note: WhatsApp web links cannot automatically attach binary files. Please attach "${product.file_name}" manually in the opened chat window.`
+        );
+      }
       const url = getWhatsAppDeliveryUrl(order.customer_phone, order, product, settings.whatsapp);
       window.open(url, '_blank');
     } else {
-      const message = formatWhatsAppDeliveryMessage(order, product, settings.whatsapp);
-      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+      alert('No customer phone number recorded for this order.');
     }
   };
 
@@ -160,14 +167,19 @@ export const StoreProductDeliveryDetails: React.FC<StoreProductDeliveryDetailsPr
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleShareWhatsApp}
-              className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
-              title="Share or send delivery details to WhatsApp"
-            >
-              <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-              <span>WhatsApp Delivery</span>
-            </button>
+            {/* Admin-only Send on WhatsApp action */}
+            {isAdminView && order.customer_phone && (
+              <button
+                onClick={handleAdminSendWhatsApp}
+                className="px-4 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
+                title="Admin only: Send verified delivery dispatch via WhatsApp"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Send on WhatsApp</span>
+              </button>
+            )}
+
+            {/* General customer support button */}
             <button
               onClick={handleContactSupport}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition flex items-center space-x-1.5 cursor-pointer"
@@ -178,6 +190,20 @@ export const StoreProductDeliveryDetails: React.FC<StoreProductDeliveryDetailsPr
             </button>
           </div>
         </div>
+
+        {/* Admin Attachment Notice */}
+        {isAdminView && adminNotice && (
+          <div className="mt-4 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-start space-x-2">
+            <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+            <div className="flex-1">
+              <strong className="text-amber-200 block mb-0.5">Admin Dispatch Notice:</strong>
+              <span>{adminNotice}</span>
+            </div>
+            <button onClick={() => setAdminNotice(null)} className="text-amber-400 hover:text-white text-xs ml-2">
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {downloadError && (
           <div className="mt-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center space-x-2">

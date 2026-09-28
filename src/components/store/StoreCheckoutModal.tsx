@@ -69,6 +69,15 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       setErrorMessage('Please enter a valid email address.');
       return;
     }
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (!phone.trim()) {
+      setErrorMessage('WhatsApp / Mobile phone number is compulsory to place an order.');
+      return;
+    }
+    if (cleanPhone.length < 10) {
+      setErrorMessage('Please enter a valid 10-digit mobile or WhatsApp number.');
+      return;
+    }
 
     setIsProcessing(true);
 
@@ -217,15 +226,19 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Phone / WhatsApp (Optional)
+                  WhatsApp / Mobile Number <span className="text-rose-400">*</span>
                 </label>
                 <input
                   type="tel"
+                  required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+91 98765 43210"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Compulsory for payment review verification and WhatsApp delivery dispatch.
+                </p>
               </div>
 
               {/* Payment Gateway Trust Indicator */}
