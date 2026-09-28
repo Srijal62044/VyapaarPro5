@@ -286,6 +286,14 @@ export interface StoreProduct {
   file_name?: string | null;
   file_size_bytes?: number | null;
   mime_type?: string | null;
+  
+  // Delivery & Access configuration
+  access_link?: string | null;
+  instructions?: string | null;
+  access_info?: string | null;
+  license_key?: string | null;
+  delivery_notes?: string | null;
+
   status: StoreProductStatus;
   featured: boolean;
   created_at?: string;

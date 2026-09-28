@@ -344,6 +344,11 @@ export const storeDataService = {
           file_name: productData.file_name || null,
           file_size_bytes: productData.file_size_bytes || null,
           mime_type: productData.mime_type || null,
+          access_link: productData.access_link?.trim() || null,
+          instructions: productData.instructions?.trim() || null,
+          access_info: productData.access_info?.trim() || null,
+          license_key: productData.license_key?.trim() || null,
+          delivery_notes: productData.delivery_notes?.trim() || null,
           status: productData.status,
           featured: productData.featured || false,
         })
@@ -372,6 +377,11 @@ export const storeDataService = {
         .from('store_products')
         .update({
           ...updates,
+          access_link: updates.access_link !== undefined ? (updates.access_link?.trim() || null) : undefined,
+          instructions: updates.instructions !== undefined ? (updates.instructions?.trim() || null) : undefined,
+          access_info: updates.access_info !== undefined ? (updates.access_info?.trim() || null) : undefined,
+          license_key: updates.license_key !== undefined ? (updates.license_key?.trim() || null) : undefined,
+          delivery_notes: updates.delivery_notes !== undefined ? (updates.delivery_notes?.trim() || null) : undefined,
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
@@ -485,14 +495,17 @@ export const storeDataService = {
       try {
         const { data, error } = await supabase
           .from('store_orders')
-          .select('*, store_order_items(*), store_payments(*)')
+          .select('*, store_order_items(*, store_products(*)), store_payments(*)')
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
         if (!error && data) {
           return data.map((o: any) => ({
             ...o,
-            items: o.store_order_items || [],
+            items: (o.store_order_items || []).map((item: any) => ({
+              ...item,
+              product: item.store_products || undefined,
+            })),
             payments: o.store_payments || [],
           })) as StoreOrder[];
         }
@@ -503,7 +516,17 @@ export const storeDataService = {
 
     const raw = safeStoreGet(STORE_STORAGE_KEYS.ORDERS);
     const orders: StoreOrder[] = raw ? JSON.parse(raw) : [];
-    return orders.filter((o) => o.user_id === userId);
+    const products = await this.getProducts({ includeAllStatuses: true });
+
+    return orders
+      .filter((o) => o.user_id === userId)
+      .map((o) => ({
+        ...o,
+        items: (o.items || []).map((item) => ({
+          ...item,
+          product: item.product || products.find((p) => p.id === item.product_id),
+        })),
+      }));
   },
 
   async getOrderById(id: string, userId?: string): Promise<StoreOrder | null> {
@@ -511,7 +534,7 @@ export const storeDataService = {
       try {
         let query = supabase
           .from('store_orders')
-          .select('*, store_order_items(*), store_payments(*)')
+          .select('*, store_order_items(*, store_products(*)), store_payments(*)')
           .eq('id', id);
 
         if (userId) {
@@ -522,7 +545,10 @@ export const storeDataService = {
         if (!error && data) {
           return {
             ...data,
-            items: data.store_order_items || [],
+            items: (data.store_order_items || []).map((item: any) => ({
+              ...item,
+              product: item.store_products || undefined,
+            })),
             payments: data.store_payments || [],
           } as StoreOrder;
         }
@@ -536,7 +562,15 @@ export const storeDataService = {
     const order = orders.find((o) => o.id === id || o.order_number === id);
     if (!order) return null;
     if (userId && order.user_id !== userId) return null;
-    return order;
+
+    const products = await this.getProducts({ includeAllStatuses: true });
+    return {
+      ...order,
+      items: (order.items || []).map((item) => ({
+        ...item,
+        product: item.product || products.find((p) => p.id === item.product_id),
+      })),
+    };
   },
 
   async getAdminOrders(params?: {
@@ -547,7 +581,7 @@ export const storeDataService = {
       try {
         let query = supabase
           .from('store_orders')
-          .select('*, store_order_items(*), store_payments(*)')
+          .select('*, store_order_items(*, store_products(*)), store_payments(*)')
           .order('created_at', { ascending: false });
 
         if (params?.status && params.status !== 'all') {
@@ -563,7 +597,10 @@ export const storeDataService = {
         if (!error && data) {
           return data.map((o: any) => ({
             ...o,
-            items: o.store_order_items || [],
+            items: (o.store_order_items || []).map((item: any) => ({
+              ...item,
+              product: item.store_products || undefined,
+            })),
             payments: o.store_payments || [],
           })) as StoreOrder[];
         }
@@ -574,6 +611,7 @@ export const storeDataService = {
 
     const raw = safeStoreGet(STORE_STORAGE_KEYS.ORDERS);
     let orders: StoreOrder[] = raw ? JSON.parse(raw) : [];
+    const products = await this.getProducts({ includeAllStatuses: true });
 
     if (params?.status && params.status !== 'all') {
       orders = orders.filter((o) => o.status === params.status);
@@ -589,7 +627,13 @@ export const storeDataService = {
       );
     }
 
-    return orders;
+    return orders.map((o) => ({
+      ...o,
+      items: (o.items || []).map((item) => ({
+        ...item,
+        product: item.product || products.find((p) => p.id === item.product_id),
+      })),
+    }));
   },
 
   async getAdminPaymentReviews(): Promise<StoreOrder[]> {

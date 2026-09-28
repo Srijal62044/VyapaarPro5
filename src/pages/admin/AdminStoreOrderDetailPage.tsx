@@ -12,13 +12,18 @@ import {
   Shield,
   Layers,
   FileCode,
+  MessageSquare,
 } from 'lucide-react';
 import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { SEO } from '../../components/common/SEO';
+import { StoreProductDeliveryDetails } from '../../components/store/StoreProductDeliveryDetails';
+import { getWhatsAppDeliveryUrl } from '../../services/storeDelivery';
+import { useSettings } from '../../contexts/SettingsContext';
 
 export const AdminStoreOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const { settings } = useSettings();
   const [order, setOrder] = useState<StoreOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -37,6 +42,24 @@ export const AdminStoreOrderDetailPage: React.FC = () => {
     }
     load();
   }, [id]);
+
+  const handleSendWhatsApp = async () => {
+    if (!order?.customer_phone) {
+      alert('No customer phone number registered for this order.');
+      return;
+    }
+    const product = order.items?.[0]?.product;
+    const url = getWhatsAppDeliveryUrl(order.customer_phone, order, product, settings.whatsapp);
+    window.open(url, '_blank');
+    try {
+      await storeDataService.reviewOrder({
+        orderId: order.id,
+        action: 'LOG_WHATSAPP_SENT',
+      });
+    } catch (e) {
+      // Non-blocking
+    }
+  };
 
   if (isLoading) {
     return (
@@ -86,20 +109,34 @@ export const AdminStoreOrderDetailPage: React.FC = () => {
           </div>
         </div>
 
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-bold ${
-            order.status === 'PAID' || order.status === 'DELIVERED'
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-              : order.status === 'REJECTED' || order.status === 'CANCELLED'
-              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-              : order.status === 'PAYMENT_REVIEW'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-              : 'bg-slate-800 text-slate-300 border border-slate-700'
-          }`}
-        >
-          {order.status}
-        </span>
+        <div className="flex items-center space-x-3">
+          {order.customer_phone && (
+            <button
+              onClick={handleSendWhatsApp}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Send WhatsApp Delivery</span>
+            </button>
+          )}
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-bold ${
+              order.status === 'PAID' || order.status === 'DELIVERED'
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                : order.status === 'REJECTED' || order.status === 'CANCELLED'
+                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                : order.status === 'PAYMENT_REVIEW'
+                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                : 'bg-slate-800 text-slate-300 border border-slate-700'
+            }`}
+          >
+            {order.status}
+          </span>
+        </div>
       </div>
+
+      {/* Configured Product Delivery Package */}
+      <StoreProductDeliveryDetails order={order} isAdminView={true} />
 
       {/* Main Order Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6">

@@ -18,6 +18,7 @@ import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { SEO } from '../../components/common/SEO';
+import { StoreProductDeliveryDetails } from '../../components/store/StoreProductDeliveryDetails';
 
 export const StorePaymentResultPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -238,6 +239,11 @@ export const StorePaymentResultPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Delivered Details if Paid */}
+        {isPaid && (
+          <StoreProductDeliveryDetails order={order} />
+        )}
 
         {/* Note that product will be delivered after confirmation */}
         {isUnderReview && (

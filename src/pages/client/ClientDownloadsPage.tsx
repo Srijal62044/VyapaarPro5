@@ -140,8 +140,30 @@ export const ClientDownloadsPage: React.FC = () => {
                 <div>
                   <h3 className="text-base font-bold text-white">{item.product_name || 'Digital Product'}</h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {item.file_name ? `File: ${item.file_name}` : 'Digital Archive Package'}
+                    {item.file_name ? `File: ${item.file_name}` : 'Digital Asset Package'}
                   </p>
+
+                  {/* Access Link & License Badges */}
+                  {(item.product?.access_link || item.product?.license_key) && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {item.product?.access_link && (
+                        <a
+                          href={item.product.access_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center space-x-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-lg border border-emerald-500/20 transition"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Access Link</span>
+                        </a>
+                      )}
+                      {item.product?.license_key && (
+                        <span className="inline-flex items-center space-x-1 text-[11px] font-mono font-semibold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                          <span>Key: {item.product.license_key}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="text-[11px] text-slate-500 space-y-1">

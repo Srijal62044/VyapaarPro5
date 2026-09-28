@@ -67,8 +67,8 @@ export default async function handler(req: any, res: any) {
 
     // Check order status
     const order = download.store_orders;
-    if (!order || order.status !== 'PAID') {
-      return res.status(402).json({ error: 'Payment required: Order is not verified as PAID.' });
+    if (!order || (order.status !== 'PAID' && order.status !== 'DELIVERED')) {
+      return res.status(402).json({ error: 'Payment required: Order is not verified as PAID or DELIVERED.' });
     }
 
     // Check product file path

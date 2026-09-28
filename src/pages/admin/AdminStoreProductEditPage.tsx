@@ -46,6 +46,13 @@ export const AdminStoreProductEditPage: React.FC = () => {
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
   const [mimeType, setMimeType] = useState('');
 
+  // Delivery configuration fields
+  const [accessLink, setAccessLink] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [accessInfo, setAccessInfo] = useState('');
+  const [licenseKey, setLicenseKey] = useState('');
+  const [deliveryNotes, setDeliveryNotes] = useState('');
+
   // Upload progress states
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -81,6 +88,11 @@ export const AdminStoreProductEditPage: React.FC = () => {
             setFileName(product.file_name || '');
             setFileSizeBytes(product.file_size_bytes || null);
             setMimeType(product.mime_type || '');
+            setAccessLink(product.access_link || '');
+            setInstructions(product.instructions || '');
+            setAccessInfo(product.access_info || '');
+            setLicenseKey(product.license_key || '');
+            setDeliveryNotes(product.delivery_notes || '');
           }
         }
       } catch (err) {
@@ -185,6 +197,11 @@ export const AdminStoreProductEditPage: React.FC = () => {
         file_name: fileName || null,
         file_size_bytes: fileSizeBytes || null,
         mime_type: mimeType || null,
+        access_link: accessLink.trim() || null,
+        instructions: instructions.trim() || null,
+        access_info: accessInfo.trim() || null,
+        license_key: licenseKey.trim() || null,
+        delivery_notes: deliveryNotes.trim() || null,
         status,
         featured,
       };
@@ -502,6 +519,105 @@ export const AdminStoreProductEditPage: React.FC = () => {
                 className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Card 4: Product Delivery & Post-Purchase Fulfillment Details */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <span>Product Delivery & Post-Purchase Details</span>
+            </h2>
+            <span className="text-[11px] text-emerald-400 font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+              Only shown after manual payment approval
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Configure the specific access details, links, credentials, or instructions sent to the customer upon verified payment. These are automatically included in the customer's portal and the WhatsApp delivery dispatch.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                Product Access / Download Link (Optional)
+              </label>
+              <input
+                type="url"
+                value={accessLink}
+                onChange={(e) => setAccessLink(e.target.value)}
+                placeholder="https://drive.google.com/... or https://notion.site/..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+              />
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                Direct external repository, Figma link, Google Drive, Notion page, or web portal.
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                License / Access Key / Serial Code (Optional)
+              </label>
+              <input
+                type="text"
+                value={licenseKey}
+                onChange={(e) => setLicenseKey(e.target.value)}
+                placeholder="VP-LIC-XXXX-YYYY-ZZZZ"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+              />
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                Software license key, activation token, or coupon code.
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Access Credentials & Account Details (Optional)
+            </label>
+            <textarea
+              rows={3}
+              value={accessInfo}
+              onChange={(e) => setAccessInfo(e.target.value)}
+              placeholder="Portal: https://app.example.com&#10;Username: [Provided in portal]&#10;Default Workspace ID: ws_98241"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+            />
+            <span className="text-[10px] text-slate-500 mt-1 block">
+              Confidential access parameters, portal URLs, or workspace IDs.
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Product Setup & Access Instructions (Optional)
+            </label>
+            <textarea
+              rows={4}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="1. Extract the downloaded .zip package.&#10;2. Run `npm install` inside the project folder.&#10;3. Copy .env.example to .env and configure your keys.&#10;4. Start the app with `npm run dev`."
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
+            />
+            <span className="text-[10px] text-slate-500 mt-1 block">
+              Step-by-step instructions displayed directly in the customer receipt.
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">
+              Additional Delivery Notes (Optional)
+            </label>
+            <textarea
+              rows={2}
+              value={deliveryNotes}
+              onChange={(e) => setDeliveryNotes(e.target.value)}
+              placeholder="Thank you for choosing VyapaarPro. For custom installation support, ping us on WhatsApp."
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
+            />
+            <span className="text-[10px] text-slate-500 mt-1 block">
+              Appended directly to the WhatsApp dispatch and customer order confirmation.
+            </span>
           </div>
         </div>
 

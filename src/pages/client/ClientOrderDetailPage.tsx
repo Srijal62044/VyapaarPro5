@@ -18,6 +18,7 @@ import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { useAuth } from '../../contexts/AuthContext';
 import { SEO } from '../../components/common/SEO';
+import { StoreProductDeliveryDetails } from '../../components/store/StoreProductDeliveryDetails';
 
 export const ClientOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -150,6 +151,11 @@ export const ClientOrderDetailPage: React.FC = () => {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Dedicated "Your Product / Delivery" section after approval */}
+        {isPaid && (
+          <StoreProductDeliveryDetails order={order} />
         )}
 
         {/* Itemized Products */}

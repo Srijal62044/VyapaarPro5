@@ -29,8 +29,11 @@ import {
 import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { SEO } from '../../components/common/SEO';
+import { getWhatsAppDeliveryUrl } from '../../services/storeDelivery';
+import { useSettings } from '../../contexts/SettingsContext';
 
 export const AdminStorePaymentReviewsPage: React.FC = () => {
+  const { settings } = useSettings();
   const [orders, setOrders] = useState<StoreOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isActionPending, setIsActionPending] = useState(false);
@@ -179,18 +182,25 @@ export const AdminStorePaymentReviewsPage: React.FC = () => {
   };
 
   // WhatsApp helper
-  const openWhatsApp = (order: StoreOrder) => {
+  const openWhatsApp = async (order: StoreOrder) => {
     const phone = (order.customer_phone || '').replace(/[^0-9]/g, '');
     if (!phone) {
       alert('No customer phone number registered for this order.');
       return;
     }
-    const cleanPhone = phone.startsWith('91') ? phone : `91${phone}`;
-    const productNames = order.items?.map((i) => i.product_name_snapshot).join(', ') || 'Digital Product';
-    const text = encodeURIComponent(
-      `Hello ${order.customer_name || 'Customer'},\n\nRegarding your VyapaarPro Store Order *${order.order_number}* for *${productNames}* (₹${Math.round(order.total_paise / 100)}):\n\nYour payment has been received and verified. Your digital product files have been delivered/unlocked in your client workspace portal.\n\nThank you for choosing VyapaarPro!`
-    );
-    window.open(`https://wa.me/${cleanPhone}?text=${text}`, '_blank');
+    const product = order.items?.[0]?.product;
+    const url = getWhatsAppDeliveryUrl(phone, order, product, settings.whatsapp);
+    window.open(url, '_blank');
+    
+    // Log audit trail
+    try {
+      await storeDataService.reviewOrder({
+        orderId: order.id,
+        action: 'LOG_WHATSAPP_SENT',
+      });
+    } catch (e) {
+      // Non-blocking
+    }
   };
 
   const filteredOrders = orders.filter((o) => {
@@ -413,23 +423,52 @@ export const AdminStorePaymentReviewsPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Column 2: Product & Financials */}
+                    {/* Column 2: Product & Financials */}
                   <div className="space-y-1.5 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                       Ordered Digital Product
                     </span>
                     {order.items && order.items.length > 0 ? (
-                      order.items.map((item) => (
-                        <div key={item.id} className="space-y-0.5">
-                          <p className="text-white font-semibold flex items-center space-x-1">
-                            <FileCode className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                            <span className="truncate">{item.product_name_snapshot}</span>
-                          </p>
-                          <p className="text-[11px] text-slate-400 font-mono">
-                            ID: {item.product_id || 'N/A'} • Qty: {item.quantity}
-                          </p>
-                        </div>
-                      ))
+                      order.items.map((item) => {
+                        const p = item.product;
+                        return (
+                          <div key={item.id} className="space-y-1">
+                            <p className="text-white font-semibold flex items-center space-x-1">
+                              <FileCode className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                              <span className="truncate">{item.product_name_snapshot}</span>
+                            </p>
+                            <p className="text-[11px] text-slate-400 font-mono">
+                              ID: {item.product_id || 'N/A'} • Qty: {item.quantity}
+                            </p>
+
+                            {/* Delivery Deliverables Indicators */}
+                            {p && (
+                              <div className="flex flex-wrap gap-1 pt-1">
+                                {(p.product_file_path || p.file_name) && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                                    📁 File: {p.file_name || 'Attached'}
+                                  </span>
+                                )}
+                                {p.access_link && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                                    🔗 Link
+                                  </span>
+                                )}
+                                {p.license_key && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                    🔑 License
+                                  </span>
+                                )}
+                                {p.instructions && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">
+                                    📋 Instructions
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
                     ) : (
                       <p className="text-white font-semibold">Digital Product</p>
                     )}
