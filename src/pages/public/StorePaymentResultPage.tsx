@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   ShoppingBag,
@@ -12,6 +12,8 @@ import {
   ExternalLink,
   MessageSquare,
   RefreshCw,
+  CreditCard,
+  Lock,
 } from 'lucide-react';
 import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
@@ -25,38 +27,84 @@ export const StorePaymentResultPage: React.FC = () => {
 
   const [order, setOrder] = useState<StoreOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [pollCount, setPollCount] = useState(0);
+  const pollTimerRef = useRef<any>(null);
 
-  const fetchOrder = async (isManual = false) => {
+  // Authoritatively verify payment with backend endpoint
+  const checkVerification = async (isManual = false) => {
     if (!orderId) {
       setIsLoading(false);
       return;
     }
 
-    if (isManual) setIsRefreshing(true);
-    else setIsLoading(true);
+    if (isManual) setIsVerifying(true);
 
     try {
-      const data = await storeDataService.getOrderById(orderId);
-      setOrder(data);
+      // 1. Call server-side authoritative verify endpoint
+      const res = await fetch(`/api/store/payment/verify?order_id=${encodeURIComponent(orderId)}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (res.ok) {
+        const verifyData = await res.json();
+        // 2. Fetch fresh order model
+        const updatedOrder = await storeDataService.getOrderById(orderId);
+        if (updatedOrder) {
+          if (verifyData.status === 'PAID') {
+            updatedOrder.status = 'PAID';
+          }
+          setOrder(updatedOrder);
+        }
+      } else {
+        const fallbackOrder = await storeDataService.getOrderById(orderId);
+        setOrder(fallbackOrder);
+      }
     } catch (err) {
-      console.error('Failed to load order status:', err);
+      console.error('Failed to verify order status:', err);
     } finally {
       setIsLoading(false);
-      setIsRefreshing(false);
+      setIsVerifying(false);
     }
   };
 
   useEffect(() => {
-    fetchOrder();
+    checkVerification();
   }, [orderId]);
+
+  // Automatic background polling while status is PAYMENT_PENDING (every 3.5s for up to 50 iterations)
+  useEffect(() => {
+    if (!order || order.status === 'PAID' || order.status === 'PAYMENT_FAILED') {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      return;
+    }
+
+    if (order.status === 'PAYMENT_PENDING' || order.status === 'CREATED') {
+      pollTimerRef.current = setInterval(() => {
+        setPollCount((prev) => {
+          if (prev >= 45) {
+            // Stop polling after ~2.5 minutes
+            clearInterval(pollTimerRef.current);
+            return prev;
+          }
+          checkVerification(false);
+          return prev + 1;
+        });
+      }, 3500);
+
+      return () => {
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      };
+    }
+  }, [order?.status]);
 
   if (isLoading) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
         <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <h2 className="text-sm font-semibold text-white">Loading Order Status</h2>
-        <p className="text-xs text-slate-400 mt-1">Retrieving authoritative transaction details...</p>
+        <h2 className="text-sm font-semibold text-white">Verifying Transaction Status</h2>
+        <p className="text-xs text-slate-400 mt-1">Connecting to server verification engine...</p>
       </div>
     );
   }
@@ -70,7 +118,7 @@ export const StorePaymentResultPage: React.FC = () => {
           </div>
           <h2 className="text-xl font-bold text-white">Order Reference Not Found</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            No valid order reference was provided in the return URL. If you completed a payment, check your email or visit your customer dashboard.
+            No valid order reference was found. If you completed a payment, check your customer dashboard or contact engineering support.
           </p>
           <div className="pt-2 space-y-2">
             <Link
@@ -96,6 +144,7 @@ export const StorePaymentResultPage: React.FC = () => {
   const isFailed = order.status === 'PAYMENT_FAILED' || order.status === 'CANCELLED';
   const latestPayment = order.payments?.[0];
   const gatewayOrderId = latestPayment?.gateway_order_id;
+  const transactionId = latestPayment?.gateway_payment_id;
 
   return (
     <div className="min-h-[75vh] py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
@@ -126,15 +175,15 @@ export const StorePaymentResultPage: React.FC = () => {
               {isPaid
                 ? 'Payment Confirmed & Verified'
                 : isFailed
-                ? 'Payment Failed or Cancelled'
+                ? 'Payment Failed or Expired'
                 : 'Payment Awaiting Confirmation'}
             </h1>
-            <p className="text-xs text-slate-300 mt-1 max-w-sm mx-auto leading-relaxed">
+            <p className="text-xs text-slate-300 mt-1 max-w-sm mx-auto leading-relaxed font-normal">
               {isPaid
-                ? 'Your transaction has been verified. Your digital product is ready for instant download.'
+                ? 'Your transaction has been verified server-side. Your digital product is unlocked and ready for instant download.'
                 : isFailed
-                ? 'The payment could not be completed or was cancelled. You can retry the checkout anytime.'
-                : 'Your order has been recorded. Once your payment is authoritatively confirmed, your download access will unlock automatically.'}
+                ? 'The payment session expired or could not be verified. You can generate a new checkout session to retry.'
+                : 'Your order is recorded. We are awaiting payment confirmation from FamGateway. This page updates automatically.'}
             </p>
           </div>
         </div>
@@ -153,8 +202,15 @@ export const StorePaymentResultPage: React.FC = () => {
             </div>
           )}
 
+          {transactionId && isPaid && (
+            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+              <span className="text-slate-400">Transaction / UTR Ref</span>
+              <span className="font-mono text-emerald-400">{transactionId}</span>
+            </div>
+          )}
+
           <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-            <span className="text-slate-400">Backend Status</span>
+            <span className="text-slate-400">Status</span>
             <span
               className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                 isPaid
@@ -179,17 +235,20 @@ export const StorePaymentResultPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Refresh button if still pending */}
+        {/* Manual Refresh button if pending */}
         {!isPaid && !isFailed && (
           <div className="text-center">
             <button
-              onClick={() => fetchOrder(true)}
-              disabled={isRefreshing}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition cursor-pointer"
+              onClick={() => checkVerification(true)}
+              disabled={isVerifying}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>Check for Payment Confirmation</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
+              <span>{isVerifying ? 'Checking Gateway Server...' : 'Check Payment Status Now'}</span>
             </button>
+            <p className="text-[10px] text-slate-500 mt-1.5">
+              Auto-checking with FamGateway verification server...
+            </p>
           </div>
         )}
 
@@ -203,12 +262,20 @@ export const StorePaymentResultPage: React.FC = () => {
               <Download className="w-4 h-4" />
               <span>Access Your Downloads Vault</span>
             </Link>
+          ) : isFailed ? (
+            <Link
+              to="/store"
+              className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center justify-center space-x-2"
+            >
+              <span>Back to Store to Retry Checkout</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
           ) : (
             <Link
               to={`/app/orders/${order.id}`}
               className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center justify-center space-x-2"
             >
-              <span>View Order Details in Client Portal</span>
+              <span>View Order in Client Portal</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           )}
@@ -236,7 +303,7 @@ export const StorePaymentResultPage: React.FC = () => {
         <div className="pt-2 text-center">
           <p className="text-[11px] text-slate-500 flex items-center justify-center space-x-1">
             <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Digital product delivery is tied to verified customer account & email.</span>
+            <span>Digital product access is permanently unlocked upon authoritative verification.</span>
           </p>
         </div>
       </div>
