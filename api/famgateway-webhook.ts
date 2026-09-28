@@ -8,7 +8,8 @@ import crypto from 'crypto';
  *
  * Receives automatic transaction notifications from FamGateway:
  * - Verifies X-FamGateway-Signature using FAMGATEWAY_API_KEY as HMAC-SHA256 secret.
- * - Atomically marks order PAID, saves UTR / transaction info, and fulfills downloads idempotently.
+ * - Supports FamGateway Webhook Tester (is_test=true, TEST-* synthetic order IDs) safely with HTTP 200 without modifying production orders.
+ * - Atomically marks real production orders PAID, saves UTR / transaction info, and fulfills downloads idempotently.
  * - Handles OPTIONS preflight & GET health ping without redirects.
  */
 export default async function handler(req: any, res: any) {
@@ -54,27 +55,39 @@ export default async function handler(req: any, res: any) {
         .digest('hex');
 
       if (signature !== expectedSignature) {
-        console.warn('FamGateway webhook signature mismatch');
+        console.warn('[Webhook] Signature verification failed');
         return res.status(401).json({ error: 'Invalid webhook signature.' });
       }
     }
 
     const payload = body.data || body.payload || body;
-    const gatewayOrderId = payload.order_id || payload.orderId;
+    const gatewayOrderId = payload.order_id || payload.orderId || body.order_id;
+    const eventName = body.event || payload.event || 'payment.success';
+    const isTest = body.is_test === true || payload.is_test === true || (typeof gatewayOrderId === 'string' && gatewayOrderId.startsWith('TEST-'));
     const gatewayStatus = (payload.status || body.status || 'success').toLowerCase().trim();
     const transactionId = payload.transaction_id || payload.id || `TXN-${Date.now()}`;
     const utr = payload.utr || null;
     const senderName = payload.sender_name || null;
-    const paymentTime = payload.payment_time_ist || new Date().toISOString();
+    const paymentTime = payload.payment_time || payload.payment_time_ist || new Date().toISOString();
+
+    // 5. Safe handling for FamGateway Test Mode / Webhook Tester
+    if (isTest || body.event === 'test' || body.test === true || body.type === 'ping') {
+      console.log(`[Webhook Diagnostic] Test mode event received: ${eventName}, order_id: ${gatewayOrderId || 'N/A'}, is_test: true`);
+      return res.status(200).json({
+        received: true,
+        test: true,
+        status: 'acknowledged',
+        event: eventName,
+        order_id: gatewayOrderId || null,
+        message: 'FamGateway test webhook verified and acknowledged successfully.',
+      });
+    }
 
     if (!gatewayOrderId) {
-      // If it's a test ping payload without order_id (e.g. { event: "test" })
-      if (body.event === 'test' || body.test === true || body.type === 'ping') {
-        return res.status(200).json({ received: true, test: true });
-      }
       return res.status(400).json({ error: 'Missing order_id in webhook payload.' });
     }
 
+    // 6. Production Order Fulfillment
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
     const supabaseKey =
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -88,7 +101,7 @@ export default async function handler(req: any, res: any) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 5. Locate payment record by FamGateway order_id
+    // Locate payment record by FamGateway order_id
     const { data: paymentRecord, error: payErr } = await supabase
       .from('store_payments')
       .select('*, store_orders(*, store_order_items(*))')
@@ -96,7 +109,7 @@ export default async function handler(req: any, res: any) {
       .single();
 
     if (payErr || !paymentRecord) {
-      console.warn(`Webhook received for unknown gateway order ID: ${gatewayOrderId}`);
+      console.warn(`[Webhook Diagnostic] Webhook received for unregistered gateway order ID: ${gatewayOrderId}`);
       return res.status(200).json({ received: true, notice: 'Payment record not found' });
     }
 
@@ -105,19 +118,19 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ received: true, notice: 'Associated order not found' });
     }
 
-    // 6. Idempotency: If order is already PAID, acknowledge without re-processing
+    // Idempotency: If order is already PAID, acknowledge without re-processing
     if (order.status === 'PAID') {
       return res.status(200).json({ received: true, status: 'already_processed' });
     }
 
-    // 7. Process payment success
+    // Process payment success
     if (gatewayStatus === 'success') {
       // Validate amount
       const expectedRupees = Number((order.total_paise / 100).toFixed(2));
-      const receivedAmount = Number(payload.amount || expectedRupees);
+      const receivedAmount = Number(payload.amount || payload.payable_amount || expectedRupees);
 
       if (Math.abs(expectedRupees - receivedAmount) > 0.05) {
-        console.error(`Webhook amount mismatch: expected ₹${expectedRupees}, received ₹${receivedAmount}`);
+        console.error(`[Webhook Diagnostic] Amount mismatch: expected ₹${expectedRupees}, received ₹${receivedAmount}`);
         return res.status(400).json({ error: 'Amount mismatch' });
       }
 
@@ -171,6 +184,7 @@ export default async function handler(req: any, res: any) {
         }
       }
 
+      console.log(`[Webhook Diagnostic] Real order ${order.order_number} marked PAID and downloads fulfilled.`);
       return res.status(200).json({ received: true, processed: true });
     }
 
@@ -196,7 +210,7 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({ received: true });
   } catch (err: any) {
-    console.error('Webhook processing error:', err);
+    console.error('[Webhook] Processing exception:', err);
     return res.status(500).json({ error: 'Internal Webhook Error' });
   }
 }
