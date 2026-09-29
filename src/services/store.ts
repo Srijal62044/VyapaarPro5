@@ -1294,6 +1294,27 @@ export const dataService = {
   async getClients(): Promise<UserProfile[]> {
     if (isSupabaseConfigured && supabase) {
       try {
+        // 1. Try secure admin endpoint with current auth session token
+        const session = (await supabase.auth.getSession())?.data.session;
+        if (session?.access_token) {
+          try {
+            const apiRes = await fetch('/api/admin/clients', {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            });
+            if (apiRes.ok) {
+              const apiData = await apiRes.json();
+              if (apiData.success && Array.isArray(apiData.clients)) {
+                return apiData.clients as UserProfile[];
+              }
+            }
+          } catch (apiErr) {
+            console.warn('Admin clients API fallback notice:', apiErr);
+          }
+        }
+
+        // 2. Direct Supabase query fallback
         const { data, error } = await supabase
           .from('profiles')
           .select('*')

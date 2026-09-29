@@ -38,7 +38,7 @@ export const AdminStorePaymentReviewsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isActionPending, setIsActionPending] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'PAYMENT_REVIEW' | 'ALL' | 'PAID' | 'REJECTED'>('PAYMENT_REVIEW');
+  const [filterStatus, setFilterStatus] = useState<'PAYMENT_REVIEW' | 'PAYMENT_PENDING' | 'ALL' | 'PAID' | 'REJECTED'>('PAYMENT_REVIEW');
 
   // Modals state
   const [selectedOrder, setSelectedOrder] = useState<StoreOrder | null>(null);
@@ -292,6 +292,16 @@ export const AdminStorePaymentReviewsPage: React.FC = () => {
             }`}
           >
             Awaiting Review ({orders.filter((o) => o.status === 'PAYMENT_REVIEW').length})
+          </button>
+          <button
+            onClick={() => setFilterStatus('PAYMENT_PENDING')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition whitespace-nowrap cursor-pointer ${
+              filterStatus === 'PAYMENT_PENDING'
+                ? 'bg-sky-500 text-slate-950 font-bold shadow-lg shadow-sky-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            Pending Verification
           </button>
           <button
             onClick={() => setFilterStatus('ALL')}
