@@ -185,6 +185,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       let order: StoreOrder | null = null;
 
       try {
+        console.log('[checkout] create-order request started');
         const orderRes = await fetch('/api/store/create-order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -199,18 +200,27 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
           }),
         });
 
+        console.log('[checkout] create-order response received');
+        console.log(`[checkout] create-order status: ${orderRes.status}`);
+
         if (orderRes.ok) {
           const orderData = await orderRes.json();
+          console.log('[checkout] create-order response parsed');
+          const resolvedId = orderData?.order?.id || orderData?.order?.order_id || orderData?.id;
+          console.log(`[checkout] extracted order ID: ${resolvedId ? 'present' : 'absent'}`);
           if (orderData?.order) {
             order = orderData.order;
+          } else if (orderData?.id) {
+            order = orderData as any;
           }
         }
       } catch (e) {
-        console.warn('Backend create-order call notice, using local service fallback:', e);
+        console.warn('[checkout] create-order call notice, using local service fallback:', e);
       }
 
       // If server route didn't return an order, use direct storeDataService
       if (!order) {
+        console.log('[checkout] using fallback client order creation');
         const fallbackRes = await storeDataService.createOrder({
           productId: product.id,
           quantity,
@@ -228,6 +238,7 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       }
 
       // 5. Initialize FamGateway Session
+      console.log('[checkout] payment/create request starting');
       const sessionResult = await famGatewayService.createCheckoutSession({
         order,
         customer: {
@@ -237,18 +248,20 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
         },
       });
 
-      const checkoutUrl = sessionResult.paymentUrl || sessionResult.checkout_url;
+      console.log('[checkout] payment/create response received', { success: sessionResult.success });
 
-      if (sessionResult.success && checkoutUrl) {
-        // Direct customer to the official FamGateway payment checkout page
-        window.location.href = checkoutUrl;
+      if (sessionResult.success && sessionResult.paymentUrl) {
+        window.location.href = sessionResult.paymentUrl;
         return;
       }
 
-      // If gateway creation failed, surface the exact error on modal
-      throw new Error(
-        sessionResult.error || 'Failed to initialize FamGateway payment session. Please try again.'
-      );
+      if (!sessionResult.success) {
+        throw new Error(sessionResult.error || 'Payment gateway session could not be initialized.');
+      }
+
+      // 6. If gateway is waiting or under review, redirect to payment status result page
+      navigate(`/store/payment-result?order_id=${encodeURIComponent(order.id)}`);
+      return;
     } catch (err: any) {
       console.error('Checkout error:', err);
       setErrorMessage(err.message || 'An error occurred during checkout. Please try again.');
