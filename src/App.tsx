@@ -21,6 +21,7 @@ import { RegisterPage } from './pages/public/RegisterPage';
 import { ForgotPasswordPage } from './pages/public/ForgotPasswordPage';
 import { PrivacyPage } from './pages/public/PrivacyPage';
 import { TermsPage } from './pages/public/TermsPage';
+import { NotFoundPage } from './pages/public/NotFoundPage';
 
 // Digital Store & Customer Hub Pages
 import { StorePage } from './pages/public/StorePage';
@@ -97,6 +98,7 @@ export default function App() {
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/privacy" element={<PrivacyPage />} />
               <Route path="/terms" element={<TermsPage />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Route>
 
             {/* 2. Backward Compatibility Redirects (Seamlessly redirect old separate client portal routes) */}
@@ -141,9 +143,6 @@ export default function App() {
 
               <Route path="settings" element={<AdminSettingsPage />} />
             </Route>
-
-            {/* Catch-all route */}
-            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

@@ -26,14 +26,14 @@ export default async function handler(req: any, res: any) {
 
   // Determine subroute from query parameter (Vercel catch-all) or URL pathname
   let routeSegments: string[] = [];
-  const queryRoute = req.query?.route;
+  const queryRoute = req.query?.route || req.query?.path;
 
   if (Array.isArray(queryRoute)) {
     routeSegments = queryRoute;
   } else if (typeof queryRoute === 'string') {
     routeSegments = queryRoute.split('/').filter(Boolean);
   } else if (req.url) {
-    const pathname = req.url.split('?')[0] || '';
+    const pathname = (req.originalUrl || req.url).split('?')[0] || '';
     const match = pathname.replace(/^\/api\/support\/?/, '');
     routeSegments = match.split('/').filter(Boolean);
   }

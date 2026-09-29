@@ -1,5 +1,8 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "trailingSlash": false,
+  "cleanUrls": true,
   "headers": [
     {
       "source": "/api/(.*)",
@@ -10,7 +13,7 @@
         },
         {
           "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, OPTIONS"
+          "value": "GET, POST, PUT, DELETE, PATCH, OPTIONS"
         },
         {
           "key": "Access-Control-Allow-Headers",
@@ -47,11 +50,11 @@
   ],
   "rewrites": [
     {
-      "source": "/api/payments/famgateway/webhook",
-      "destination": "/api/famgateway-webhook"
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
     },
     {
-      "source": "/((?!api/|assets/|favicon\\.ico|.*\\.[\\w]+$).*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
