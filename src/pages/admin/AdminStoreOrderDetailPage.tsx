@@ -18,6 +18,7 @@ import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { SEO } from '../../components/common/SEO';
 import { StoreProductDeliveryDetails } from '../../components/store/StoreProductDeliveryDetails';
+import { SocialServiceOrderCard } from '../../components/store/SocialServiceOrderCard';
 import { getWhatsAppDeliveryUrl } from '../../services/storeDelivery';
 import { useSettings } from '../../contexts/SettingsContext';
 
@@ -134,6 +135,9 @@ export const AdminStoreOrderDetailPage: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* Social Service Dynamic Ordering Fields Snapshot */}
+      <SocialServiceOrderCard order={order} isAdminView={true} />
 
       {/* Configured Product Delivery Package */}
       <StoreProductDeliveryDetails order={order} isAdminView={true} />

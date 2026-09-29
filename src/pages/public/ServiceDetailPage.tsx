@@ -17,6 +17,7 @@ import { dataService } from '../../services/store';
 import { ServiceItem } from '../../types';
 import { SEO } from '../../components/common/SEO';
 import { useSettings } from '../../contexts/SettingsContext';
+import { ServiceThumbnail } from '../../components/common/ServiceThumbnail';
 
 interface OutletContextType {
   onOpenGetStarted: (service?: ServiceItem) => void;
@@ -122,12 +123,14 @@ export const ServiceDetailPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Featured Image */}
+            {/* Featured Image / Thumbnail */}
             <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 max-h-[420px]">
-              <img
-                src={service.thumbnail_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80'}
+              <ServiceThumbnail
+                src={service.thumbnail_url}
                 alt={service.name}
-                className="w-full h-full object-cover"
+                platform={service.category_name}
+                aspectRatio="video"
+                imageClassName="w-full h-full object-cover"
               />
             </div>
 

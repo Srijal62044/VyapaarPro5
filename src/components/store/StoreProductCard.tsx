@@ -11,6 +11,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { StoreProduct } from '../../types';
+import { ServiceThumbnail } from '../common/ServiceThumbnail';
 
 interface StoreProductCardProps {
   product: StoreProduct;
@@ -103,27 +104,15 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onB
   return (
     <div className="group bg-slate-900/80 border border-slate-800/80 hover:border-indigo-500/50 rounded-2xl overflow-hidden transition-all duration-300 flex flex-col justify-between hover:shadow-xl hover:shadow-indigo-950/20">
       <div>
-        {/* Thumbnail preview */}
+        {/* Thumbnail preview with clean default placeholder and onError handling */}
         <div className="relative aspect-video w-full overflow-hidden bg-slate-950">
-          {product.thumbnail_url ? (
-            <img
-              src={product.thumbnail_url}
-              alt={product.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/40 text-slate-500 p-4 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                {product.platform ? (
-                  <Flame className="w-6 h-6 text-indigo-400" />
-                ) : (
-                  <Download className="w-6 h-6 text-indigo-400" />
-                )}
-              </div>
-              <span className="text-xs font-semibold text-slate-300">{badge.label}</span>
-            </div>
-          )}
+          <ServiceThumbnail
+            src={product.thumbnail_url}
+            alt={product.name}
+            platform={product.platform}
+            aspectRatio="video"
+            imageClassName="group-hover:scale-105 transition-transform duration-500"
+          />
 
           {/* Badges */}
           <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-10">
@@ -195,14 +184,14 @@ export const StoreProductCard: React.FC<StoreProductCardProps> = ({ product, onB
             to={`/store/${product.slug}`}
             className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
           >
-            Details
+            View Details
           </Link>
           <button
             onClick={() => (onBuyNow ? onBuyNow(product) : undefined)}
             className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5 cursor-pointer"
           >
             <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Buy Now</span>
+            <span>{product.platform ? 'Order Now' : 'Buy Now'}</span>
           </button>
         </div>
       </div>

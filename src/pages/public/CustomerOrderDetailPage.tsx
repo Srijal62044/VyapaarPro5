@@ -21,6 +21,7 @@ import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { SEO } from '../../components/common/SEO';
 import { StoreProductDeliveryDetails } from '../../components/store/StoreProductDeliveryDetails';
+import { SocialServiceOrderCard } from '../../components/store/SocialServiceOrderCard';
 
 export const CustomerOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -135,6 +136,9 @@ export const CustomerOrderDetailPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Social Service Dynamic Ordering Details Snapshot */}
+      <SocialServiceOrderCard order={order} isAdminView={false} />
 
       {/* DELIVERED PACKAGE SECTION - Visible when Approved */}
       {isPaidOrDelivered && (

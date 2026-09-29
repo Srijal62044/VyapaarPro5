@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Clock, Star, Sparkles, Check } from 'lucide-react';
 import { ServiceItem } from '../../types';
+import { ServiceThumbnail } from './ServiceThumbnail';
 
 interface ServiceCardProps {
   service: ServiceItem;
@@ -39,13 +40,14 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({ service, onGetStarted 
     <div className="group relative bg-slate-900/90 hover:bg-slate-900 border border-slate-800/80 hover:border-indigo-500/40 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/10 flex flex-col h-full">
       {/* Thumbnail */}
       <div className="relative h-48 w-full overflow-hidden bg-slate-950">
-        <img
-          src={service.thumbnail_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80'}
+        <ServiceThumbnail
+          src={service.thumbnail_url}
           alt={service.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition duration-500 opacity-90 group-hover:opacity-100"
-          loading="lazy"
+          platform={service.category_name}
+          aspectRatio="video"
+          imageClassName="group-hover:scale-105 transition duration-500 opacity-90 group-hover:opacity-100"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80 pointer-events-none" />
 
         {/* Category Pill */}
         <div className="absolute top-3 left-3">

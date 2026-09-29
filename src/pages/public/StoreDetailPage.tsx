@@ -19,6 +19,8 @@ import { StoreProduct } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { StoreCheckoutModal } from '../../components/store/StoreCheckoutModal';
 import { SEO } from '../../components/common/SEO';
+import { ServiceThumbnail } from '../../components/common/ServiceThumbnail';
+import { getEffectiveServiceFields } from '../../services/socialServiceFields';
 
 export const StoreDetailPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -101,6 +103,9 @@ export const StoreDetailPage: React.FC = () => {
       ? Math.round(((compareRupees - priceRupees) / compareRupees) * 100)
       : null;
 
+  const isSocialService = Boolean(product.platform && product.platform !== 'digital');
+  const effectiveFields = isSocialService ? getEffectiveServiceFields(product) : [];
+
   return (
     <div className="min-h-screen py-8 lg:py-12">
       <SEO
@@ -135,24 +140,18 @@ export const StoreDetailPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
           {/* Left Column: Media & Description (7 Cols) */}
           <div className="lg:col-span-7 space-y-8">
-            {/* Product Thumbnail Viewer */}
+            {/* Product / Service Thumbnail Viewer */}
             <div className="relative aspect-video rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl">
-              {product.thumbnail_url ? (
-                <img
-                  src={product.thumbnail_url}
-                  alt={product.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950/40 to-slate-900 p-8 text-center">
-                  <Download className="w-12 h-12 text-indigo-400 mb-3" />
-                  <span className="text-sm font-semibold text-slate-300">{product.name}</span>
-                  <span className="text-xs text-slate-500 mt-1">Digital Asset Package</span>
-                </div>
-              )}
+              <ServiceThumbnail
+                src={product.thumbnail_url}
+                alt={product.name}
+                platform={product.platform}
+                aspectRatio="video"
+                imageClassName="w-full h-full object-cover"
+              />
 
               {/* Badges */}
-              <div className="absolute top-4 left-4 flex flex-wrap gap-2 z-10">
+              <div className="absolute top-4 left-4 flex flex-wrap gap-2 z-10 pointer-events-none">
                 {product.category_name && (
                   <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-950/80 text-white backdrop-blur-md border border-slate-800">
                     {product.category_name}
@@ -239,6 +238,30 @@ export const StoreDetailPage: React.FC = () => {
                 )}
               </div>
 
+              {/* Dynamic Order Fields Preview if Social Service */}
+              {isSocialService && effectiveFields.length > 0 && (
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
+                      Dynamic Order Fields
+                    </span>
+                    <span className="text-[10px] text-violet-400 font-mono">
+                      {effectiveFields.length} Required Field{effectiveFields.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    {effectiveFields.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between py-1 border-b border-slate-800/60 last:border-0">
+                        <span className="text-slate-300 truncate max-w-[200px]">{f.label}</span>
+                        <span className="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                          {f.field_type.toUpperCase()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Purchase Actions */}
               <div className="space-y-3">
                 <button
@@ -246,7 +269,7 @@ export const StoreDetailPage: React.FC = () => {
                   className="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 transition transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 cursor-pointer"
                 >
                   <ShoppingBag className="w-5 h-5" />
-                  <span>Buy Now • Instant Download</span>
+                  <span>{isSocialService ? 'Order Now • Configure Details' : 'Buy Now • Instant Download'}</span>
                 </button>
 
                 <button
@@ -254,7 +277,7 @@ export const StoreDetailPage: React.FC = () => {
                   className="w-full py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-300 text-xs font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5" />
-                  <span>{isCopied ? 'Link Copied!' : 'Share Digital Product'}</span>
+                  <span>{isCopied ? 'Link Copied!' : isSocialService ? 'Share Service' : 'Share Digital Product'}</span>
                 </button>
               </div>
 

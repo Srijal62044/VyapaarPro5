@@ -13,6 +13,8 @@ import {
 import { dataService } from '../../services/store';
 import { PricingModel, ServiceCategory, ServiceItem } from '../../types';
 import { SEO } from '../../components/common/SEO';
+import { ServiceThumbnailUrlField } from '../../components/admin/ServiceThumbnailUrlField';
+import { validateThumbnailUrl } from '../../utils/thumbnailValidation';
 
 export const AdminServiceEditPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -175,6 +177,14 @@ export const AdminServiceEditPage: React.FC = () => {
       return;
     }
 
+    if (thumbnailUrl.trim()) {
+      const validation = validateThumbnailUrl(thumbnailUrl.trim());
+      if (!validation.isValid) {
+        setErrorMsg(validation.error || 'Invalid thumbnail image URL');
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       const selectedCat = categories.find((c) => c.id === categoryId);
@@ -191,7 +201,7 @@ export const AdminServiceEditPage: React.FC = () => {
         price: pricingModel === 'CUSTOM_QUOTE' ? 0 : Number(price),
         currency: 'INR',
         timeline: timeline.trim(),
-        thumbnail_url: thumbnailUrl.trim() || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
+        thumbnail_url: thumbnailUrl.trim() || undefined,
         demo_url: demoUrl.trim() || undefined,
         featured,
         published,
@@ -382,32 +392,26 @@ export const AdminServiceEditPage: React.FC = () => {
             />
           </div>
 
-          {/* Thumbnail & Live Website Link */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Thumbnail Image URL
-              </label>
-              <input
-                type="url"
-                value={thumbnailUrl}
-                onChange={(e) => setThumbnailUrl(e.target.value)}
-                placeholder="https://images.unsplash.com/..."
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-violet-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Live Website / Production URL (Optional)
-              </label>
-              <input
-                type="url"
-                value={demoUrl}
-                onChange={(e) => setDemoUrl(e.target.value)}
-                placeholder="https://clientproject.com"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-violet-500"
-              />
-            </div>
+          {/* Thumbnail URL (External Image Link Only - No Supabase Storage) */}
+          <ServiceThumbnailUrlField
+            value={thumbnailUrl}
+            onChange={(url) => setThumbnailUrl(url)}
+            label="Thumbnail URL"
+            placeholder="https://example.com/service-thumbnail.jpg"
+          />
+
+          {/* Live Website Link */}
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Live Website / Production URL (Optional)
+            </label>
+            <input
+              type="url"
+              value={demoUrl}
+              onChange={(e) => setDemoUrl(e.target.value)}
+              placeholder="https://clientproject.com"
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-violet-500"
+            />
           </div>
 
           {/* Toggles */}

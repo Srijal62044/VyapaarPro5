@@ -19,6 +19,7 @@ import { storeDataService } from '../../services/storeDataService';
 import { useSettings } from '../../contexts/SettingsContext';
 import { SEO } from '../../components/common/SEO';
 import { StoreProductDeliveryDetails } from '../../components/store/StoreProductDeliveryDetails';
+import { SocialServiceOrderCard } from '../../components/store/SocialServiceOrderCard';
 
 export const StorePaymentResultPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -123,7 +124,7 @@ export const StorePaymentResultPage: React.FC = () => {
           </p>
           <div className="pt-2 space-y-2">
             <Link
-              to="/app/orders"
+              to="/orders"
               className="block w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition"
             >
               Go to Customer Orders
@@ -240,6 +241,9 @@ export const StorePaymentResultPage: React.FC = () => {
           )}
         </div>
 
+        {/* Social Service Submitted Specs */}
+        <SocialServiceOrderCard order={order} isAdminView={false} />
+
         {/* Delivered Details if Paid */}
         {isPaid && (
           <StoreProductDeliveryDetails order={order} />
@@ -259,7 +263,7 @@ export const StorePaymentResultPage: React.FC = () => {
         <div className="space-y-3 pt-2">
           {isPaid ? (
             <Link
-              to="/app/downloads"
+              to="/downloads"
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-xl shadow-indigo-600/30 transition flex items-center justify-center space-x-2"
             >
               <Download className="w-4 h-4" />
@@ -267,10 +271,10 @@ export const StorePaymentResultPage: React.FC = () => {
             </Link>
           ) : (
             <Link
-              to={`/app/orders/${order.id}`}
+              to={`/orders/${order.id}`}
               className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center justify-center space-x-2"
             >
-              <span>View Order in Customer Dashboard</span>
+              <span>View Order Details</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           )}

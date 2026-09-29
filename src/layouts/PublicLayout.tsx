@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Navbar } from '../components/common/Navbar';
 import { Footer } from '../components/common/Footer';
 import { RequestModal } from '../components/common/RequestModal';
+import { AISupportWidget } from '../components/support/AISupportWidget';
 import { ServiceItem } from '../types';
 import { dataService } from '../services/store';
 import { MessageSquare, Sparkles } from 'lucide-react';
@@ -36,22 +37,25 @@ export const PublicLayout: React.FC = () => {
       <Footer />
 
       {/* Floating Action Button for Instant WhatsApp consultation */}
-      <div className="fixed bottom-6 right-6 z-30 flex flex-col items-end space-y-3">
+      <div className="fixed bottom-20 right-6 z-30 flex flex-col items-end space-y-3">
         <a
           href={`https://wa.me/${(settings.whatsapp || '919876543210').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
             'Hello VyapaarPro, I would like to consult on a new digital project.'
           )}`}
           target="_blank"
           rel="noreferrer"
-          className="group flex items-center bg-emerald-600 hover:bg-emerald-500 text-white p-3.5 rounded-full shadow-2xl shadow-emerald-950/80 transition-all hover:scale-105"
+          className="group flex items-center bg-emerald-600 hover:bg-emerald-500 text-white p-3 rounded-full shadow-2xl shadow-emerald-950/80 transition-all hover:scale-105"
           title="Direct WhatsApp Consultation"
         >
-          <MessageSquare className="w-5 h-5" />
+          <MessageSquare className="w-4 h-4" />
           <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-300 ease-in-out px-0 group-hover:px-2 text-xs font-semibold">
-            Chat on WhatsApp
+            WhatsApp
           </span>
         </a>
       </div>
+
+      {/* Floating AI Support System Widget */}
+      <AISupportWidget />
 
       <RequestModal
         isOpen={isModalOpen}

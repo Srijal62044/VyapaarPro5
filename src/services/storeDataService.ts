@@ -11,6 +11,7 @@ import {
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { generateReferenceCode } from './store';
 import { INITIAL_STORE_CATEGORIES, INITIAL_STORE_PRODUCTS } from './storeSeedData';
+import { calculateServicePrice } from './socialServiceFields';
 
 // Storage keys for offline / preview mode fallback (Contains ZERO fake records by default)
 const STORE_STORAGE_KEYS = {
@@ -253,11 +254,11 @@ export const storeDataService = {
           list = data.map((item: any) => ({
             ...item,
             category_name: item.store_categories?.name || undefined,
-            thumbnail_url: item.thumbnail_path
+            thumbnail_url: item.thumbnail_url || (item.thumbnail_path
               ? item.thumbnail_path.startsWith('http')
                 ? item.thumbnail_path
                 : supabase?.storage.from('store-thumbnails').getPublicUrl(item.thumbnail_path).data.publicUrl
-              : null,
+              : null),
           })) as StoreProduct[];
         }
       } catch (err) {
@@ -274,18 +275,31 @@ export const storeDataService = {
 
     for (let i = 0; i < INITIAL_STORE_PRODUCTS.length; i++) {
       const initProd = INITIAL_STORE_PRODUCTS[i];
-      const existsInList = list.some((p) => p.slug === initProd.slug);
+      const existingIdx = list.findIndex((p) => p.slug === initProd.slug);
 
-      if (!existsInList) {
+      if (existingIdx === -1) {
         const localMatch = localList.find((p) => p.slug === initProd.slug);
         const prodToAdd: StoreProduct = localMatch || {
           id: `sp-${initProd.slug}-${i + 1}`,
           ...initProd,
+          status: 'PUBLISHED',
           created_at: now,
           updated_at: now,
         };
         list.push(prodToAdd);
         missingToSeed.push(initProd);
+      } else {
+        // Hydrate missing properties on existing items (e.g. platform, min_quantity, ordering_fields, status)
+        const current = list[existingIdx];
+        list[existingIdx] = {
+          ...initProd,
+          ...current,
+          platform: current.platform || initProd.platform,
+          service_type: current.service_type || initProd.service_type,
+          min_quantity: current.min_quantity || initProd.min_quantity,
+          max_quantity: current.max_quantity || initProd.max_quantity,
+          status: current.status || 'PUBLISHED',
+        };
       }
     }
 
@@ -324,24 +338,39 @@ export const storeDataService = {
 
     // Apply filtering on the complete guaranteed product catalog
     if (!params?.includeAllStatuses) {
-      list = list.filter((p) => p.status === (params?.status || 'PUBLISHED'));
+      list = list.filter((p) => (p.status || 'PUBLISHED') === (params?.status || 'PUBLISHED'));
     } else if (params?.status) {
-      list = list.filter((p) => p.status === params.status);
+      list = list.filter((p) => (p.status || 'PUBLISHED') === params.status);
     }
 
     if (params?.platform && params.platform !== 'all') {
-      const targetPlat = params.platform.toLowerCase();
-      list = list.filter(
-        (p) =>
-          p.platform?.toLowerCase() === targetPlat ||
-          (targetPlat === 'twitter' && (p.platform === 'x' || p.platform === 'twitter')) ||
-          p.category_id?.toLowerCase().includes(targetPlat) ||
-          p.slug.toLowerCase().startsWith(targetPlat)
-      );
+      const targetPlat = params.platform.toLowerCase().replace(/^cat-/, '');
+      list = list.filter((p) => {
+        const plat = (p.platform || '').toLowerCase();
+        const cat = (p.category_id || '').toLowerCase().replace(/^cat-/, '');
+        const catName = (p.category_name || '').toLowerCase();
+        const slug = (p.slug || '').toLowerCase();
+
+        return (
+          plat === targetPlat ||
+          (targetPlat === 'twitter' && (plat === 'x' || plat === 'twitter')) ||
+          (targetPlat === 'x' && (plat === 'x' || plat === 'twitter')) ||
+          (targetPlat === 'digital' && (!p.platform || plat === 'digital' || plat === 'boilerplate')) ||
+          cat === targetPlat ||
+          catName.includes(targetPlat) ||
+          slug.startsWith(targetPlat) ||
+          slug.includes(targetPlat)
+        );
+      });
     }
 
     if (params?.categoryId && params.categoryId !== 'all') {
-      list = list.filter((p) => p.category_id === params.categoryId || p.platform === params.categoryId);
+      const targetCat = params.categoryId.toLowerCase().replace(/^cat-/, '');
+      list = list.filter((p) => {
+        const cat = (p.category_id || '').toLowerCase().replace(/^cat-/, '');
+        const plat = (p.platform || '').toLowerCase();
+        return cat === targetCat || plat === targetCat || p.category_id === params.categoryId;
+      });
     }
 
     if (params?.featured !== undefined) {
@@ -353,6 +382,7 @@ export const storeDataService = {
       list = list.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
+          p.slug.toLowerCase().includes(q) ||
           p.short_description.toLowerCase().includes(q) ||
           p.description.toLowerCase().includes(q) ||
           (p.platform && p.platform.toLowerCase().includes(q)) ||
@@ -376,11 +406,11 @@ export const storeDataService = {
           return {
             ...data,
             category_name: data.store_categories?.name || undefined,
-            thumbnail_url: data.thumbnail_path
+            thumbnail_url: data.thumbnail_url || (data.thumbnail_path
               ? data.thumbnail_path.startsWith('http')
                 ? data.thumbnail_path
                 : supabase?.storage.from('store-thumbnails').getPublicUrl(data.thumbnail_path).data.publicUrl
-              : null,
+              : null),
           } as StoreProduct;
         }
       } catch (err) {
@@ -405,11 +435,11 @@ export const storeDataService = {
           return {
             ...data,
             category_name: data.store_categories?.name || undefined,
-            thumbnail_url: data.thumbnail_path
+            thumbnail_url: data.thumbnail_url || (data.thumbnail_path
               ? data.thumbnail_path.startsWith('http')
                 ? data.thumbnail_path
                 : supabase?.storage.from('store-thumbnails').getPublicUrl(data.thumbnail_path).data.publicUrl
-              : null,
+              : null),
           } as StoreProduct;
         }
       } catch (err) {
@@ -433,7 +463,8 @@ export const storeDataService = {
           description: productData.description.trim(),
           price_paise: productData.price_paise,
           compare_at_price_paise: productData.compare_at_price_paise || null,
-          thumbnail_path: productData.thumbnail_path || null,
+          thumbnail_url: productData.thumbnail_url?.trim() || null,
+          thumbnail_path: productData.thumbnail_url?.trim() || productData.thumbnail_path || null,
           product_file_path: productData.product_file_path || null,
           file_name: productData.file_name || null,
           file_size_bytes: productData.file_size_bytes || null,
@@ -477,6 +508,8 @@ export const storeDataService = {
         .from('store_products')
         .update({
           ...updates,
+          thumbnail_url: updates.thumbnail_url !== undefined ? (updates.thumbnail_url?.trim() || null) : undefined,
+          thumbnail_path: updates.thumbnail_url !== undefined ? (updates.thumbnail_url?.trim() || null) : updates.thumbnail_path,
           access_link: updates.access_link !== undefined ? (updates.access_link?.trim() || null) : undefined,
           instructions: updates.instructions !== undefined ? (updates.instructions?.trim() || null) : undefined,
           access_info: updates.access_info !== undefined ? (updates.access_info?.trim() || null) : undefined,
@@ -596,6 +629,123 @@ export const storeDataService = {
   // ============================================================================
   // 3. ORDERS & ORDER ITEMS
   // ============================================================================
+  async createOrder(params: {
+    productId: string;
+    quantity: number;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    serviceFields?: Record<string, any>;
+    userId?: string | null;
+  }): Promise<{ success: boolean; order: StoreOrder }> {
+    const { productId, quantity, customerName, customerEmail, customerPhone, serviceFields, userId } = params;
+
+    if (!customerPhone || customerPhone.replace(/[^0-9]/g, '').length < 10) {
+      throw new Error('WhatsApp / mobile phone number is compulsory to place an order.');
+    }
+
+    const products = await this.getProducts({ includeAllStatuses: true });
+    let product = products.find((p) => p.id === productId || p.slug === productId);
+    if (!product) {
+      const initMatch = INITIAL_STORE_PRODUCTS.find((p) => p.slug === productId || (p as any).id === productId);
+      if (initMatch) {
+        product = {
+          id: `sp-${initMatch.slug}`,
+          ...initMatch,
+          status: 'PUBLISHED',
+        } as StoreProduct;
+      }
+    }
+
+    if (!product) {
+      throw new Error('Product not found or unavailable for purchase.');
+    }
+
+    const parsedQty = Math.max(1, Math.round(Number(quantity) || Number(product.min_quantity) || 1));
+    const totalPaise = calculateServicePrice(product, parsedQty);
+    const unitPricePaise = Math.round(totalPaise / parsedQty);
+
+    const now = new Date().toISOString();
+    const orderNumber = generateOrderNumber();
+    const orderId = `ord-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    const newOrder: StoreOrder = {
+      id: orderId,
+      order_number: orderNumber,
+      user_id: userId || null,
+      customer_email: customerEmail.trim().toLowerCase(),
+      customer_name: customerName.trim(),
+      customer_phone: customerPhone.trim(),
+      subtotal_paise: totalPaise,
+      discount_paise: 0,
+      total_paise: totalPaise,
+      currency: 'INR',
+      status: 'PAYMENT_PENDING',
+      fulfillment_status: 'UNFULFILLED',
+      service_fields_snapshot: serviceFields || {},
+      created_at: now,
+      updated_at: now,
+      items: [
+        {
+          id: `item-${Date.now()}`,
+          order_id: orderId,
+          product_id: product.id,
+          product_name_snapshot: product.name,
+          unit_price_paise: unitPricePaise,
+          quantity: parsedQty,
+          total_paise: totalPaise,
+          fields_snapshot: serviceFields || {},
+          created_at: now,
+          product,
+        },
+      ],
+      payments: [],
+    };
+
+    // Save to Local Storage Cache
+    const rawOrders = safeStoreGet(STORE_STORAGE_KEYS.ORDERS);
+    const orders: StoreOrder[] = rawOrders ? JSON.parse(rawOrders) : [];
+    orders.unshift(newOrder);
+    safeStoreSet(STORE_STORAGE_KEYS.ORDERS, JSON.stringify(orders));
+
+    // Also attempt Supabase insert if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: dbOrder, error: orderErr } = await supabase
+          .from('store_orders')
+          .insert({
+            order_number: orderNumber,
+            user_id: userId || null,
+            customer_email: customerEmail.trim().toLowerCase(),
+            customer_name: customerName.trim(),
+            customer_phone: customerPhone.trim(),
+            total_paise: totalPaise,
+            currency: 'INR',
+            status: 'PAYMENT_PENDING',
+            fulfillment_status: 'UNFULFILLED',
+          })
+          .select()
+          .single();
+
+        if (!orderErr && dbOrder) {
+          await supabase.from('store_order_items').insert({
+            order_id: dbOrder.id,
+            product_id: product.id,
+            product_name_snapshot: product.name,
+            unit_price_paise: unitPricePaise,
+            quantity: parsedQty,
+            total_paise: totalPaise,
+            fields_snapshot: serviceFields || {},
+          });
+          newOrder.id = dbOrder.id;
+        }
+      } catch (err) {
+        console.warn('Supabase createOrder insert notice:', err);
+      }
+    }
+
+    return { success: true, order: newOrder };
+  },
   async getCustomerOrders(userId: string): Promise<StoreOrder[]> {
     if (isSupabaseConfigured && supabase) {
       try {

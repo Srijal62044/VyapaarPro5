@@ -19,10 +19,26 @@ import {
   ShieldCheck,
   ChevronRight,
   Filter,
+  ArrowUp,
+  ArrowDown,
+  Layers,
+  Settings2,
+  ListPlus,
+  HelpCircle,
 } from 'lucide-react';
-import { StoreProduct, StoreProductStatus, StoreCategory } from '../../types';
+import {
+  StoreProduct,
+  StoreProductStatus,
+  StoreCategory,
+  SocialServiceFieldConfig,
+  SocialFieldType,
+} from '../../types';
 import { storeDataService } from '../../services/storeDataService';
+import { getDefaultFieldsForService } from '../../services/socialServiceFields';
 import { SEO } from '../../components/common/SEO';
+import { ServiceThumbnail } from '../../components/common/ServiceThumbnail';
+import { ServiceThumbnailUrlField } from '../../components/admin/ServiceThumbnailUrlField';
+import { validateThumbnailUrl } from '../../utils/thumbnailValidation';
 
 interface PlatformOption {
   id: string;
@@ -160,6 +176,7 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
         instructions: service.instructions,
         access_info: service.access_info,
         delivery_notes: service.delivery_notes,
+        thumbnail_url: service.thumbnail_url || null,
         status: 'DRAFT',
         featured: false,
         sort_order: (service.sort_order || 0) + 1,
@@ -176,18 +193,33 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
   // Open Edit / Add Modal
   const openEditModal = (service?: StoreProduct) => {
     if (service) {
-      setModalService({ ...service });
+      const defaultFields = getDefaultFieldsForService(service);
+      const fields = service.ordering_fields && service.ordering_fields.length > 0
+        ? [...service.ordering_fields]
+        : defaultFields;
+      setModalService({
+        ...service,
+        thumbnail_url: service.thumbnail_url || '',
+        ordering_fields: fields,
+      });
     } else {
+      const initialPlat = selectedPlatform !== 'all' ? selectedPlatform.replace(/^cat-/, '') : 'instagram';
+      const initialFields = getDefaultFieldsForService({
+        platform: initialPlat,
+        service_type: 'followers',
+        name: 'New Service',
+      });
       setModalService({
         name: '',
         slug: '',
-        platform: selectedPlatform !== 'all' ? selectedPlatform : 'instagram',
-        category_id: categories[0]?.id || 'cat-instagram',
+        platform: initialPlat,
+        category_id: `cat-${initialPlat}`,
         service_type: 'followers',
         short_description: '',
         description: '',
         price_paise: 19900,
         compare_at_price_paise: 39900,
+        thumbnail_url: '',
         min_quantity: 100,
         max_quantity: 10000,
         delivery_time_info: 'Instant • 10-30 Mins',
@@ -197,9 +229,75 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
         status: 'PUBLISHED',
         featured: false,
         sort_order: 10,
+        ordering_fields: initialFields,
       });
     }
     setIsModalOpen(true);
+  };
+
+  // Dynamic ordering field helpers
+  const handleAddField = () => {
+    if (!modalService) return;
+    const currentFields = modalService.ordering_fields || [];
+    const newField: SocialServiceFieldConfig = {
+      field_key: `field_${Date.now().toString().slice(-4)}`,
+      label: 'Target URL / Username',
+      field_type: 'url',
+      placeholder: 'https://...',
+      help_text: '',
+      required: true,
+      display_order: currentFields.length + 1,
+    };
+    setModalService({
+      ...modalService,
+      ordering_fields: [...currentFields, newField],
+    });
+  };
+
+  const handleUpdateField = (index: number, updates: Partial<SocialServiceFieldConfig>) => {
+    if (!modalService || !modalService.ordering_fields) return;
+    const nextFields = [...modalService.ordering_fields];
+    nextFields[index] = { ...nextFields[index], ...updates };
+    setModalService({
+      ...modalService,
+      ordering_fields: nextFields,
+    });
+  };
+
+  const handleDeleteField = (index: number) => {
+    if (!modalService || !modalService.ordering_fields) return;
+    const nextFields = modalService.ordering_fields.filter((_, idx) => idx !== index);
+    setModalService({
+      ...modalService,
+      ordering_fields: nextFields,
+    });
+  };
+
+  const handleMoveField = (index: number, direction: 'up' | 'down') => {
+    if (!modalService || !modalService.ordering_fields) return;
+    const fields = [...modalService.ordering_fields];
+    const targetIdx = direction === 'up' ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= fields.length) return;
+    const temp = fields[index];
+    fields[index] = fields[targetIdx];
+    fields[targetIdx] = temp;
+    fields.forEach((f, idx) => {
+      f.display_order = idx + 1;
+    });
+    setModalService({
+      ...modalService,
+      ordering_fields: fields,
+    });
+  };
+
+  const handleResetToPlatformDefaults = () => {
+    if (!modalService) return;
+    const defaults = getDefaultFieldsForService(modalService as any);
+    setModalService({
+      ...modalService,
+      ordering_fields: defaults,
+    });
+    showFeedback('success', `Reset fields to standard platform defaults for ${modalService.platform || 'service'}`);
   };
 
   // Save Modal Form
@@ -210,6 +308,18 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
       return;
     }
 
+    // Validate external thumbnail URL if provided
+    if (modalService.thumbnail_url && modalService.thumbnail_url.trim()) {
+      const validation = validateThumbnailUrl(modalService.thumbnail_url);
+      if (!validation.isValid) {
+        showFeedback('error', validation.error || 'Invalid thumbnail image URL');
+        return;
+      }
+      modalService.thumbnail_url = validation.sanitizedUrl || null;
+    } else {
+      modalService.thumbnail_url = null;
+    }
+
     setIsSavingModal(true);
     try {
       if (modalService.id) {
@@ -218,7 +328,7 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
         setServices((prev) =>
           prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s))
         );
-        showFeedback('success', `Saved service "${updated.name}"`);
+        showFeedback('success', `Saved service "${updated.name}" with ${modalService.ordering_fields?.length || 0} ordering field(s)`);
       } else {
         // Create new
         const created = await storeDataService.createProduct(modalService as any);
@@ -237,17 +347,19 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
   // Filtered services
   const filteredServices = services.filter((s) => {
     if (selectedPlatform !== 'all') {
-      const target = selectedPlatform.toLowerCase();
+      const target = selectedPlatform.toLowerCase().replace(/^cat-/, '');
       const plat = (s.platform || '').toLowerCase();
-      const cat = (s.category_id || '').toLowerCase();
+      const cat = (s.category_id || '').toLowerCase().replace(/^cat-/, '');
+      const catName = (s.category_name || '').toLowerCase();
       const slug = (s.slug || '').toLowerCase();
 
       const matches =
         plat === target ||
         (target === 'twitter' && (plat === 'x' || plat === 'twitter')) ||
+        (target === 'x' && (plat === 'x' || plat === 'twitter')) ||
         (target === 'digital' && (!s.platform || plat === 'digital' || plat === 'boilerplate')) ||
         cat === target ||
-        cat === `cat-${target}` ||
+        catName.includes(target) ||
         slug.startsWith(target) ||
         slug.includes(target);
 
@@ -442,21 +554,42 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
 
                   return (
                     <tr key={service.id} className="hover:bg-slate-800/40 transition">
-                      {/* 1. Platform & Title */}
+                      {/* 1. Thumbnail, Platform & Title */}
                       <td className="px-5 py-4 max-w-sm">
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${platformConfig?.badgeBg || 'bg-slate-800 text-slate-300'}`}>
-                              {service.platform || 'General'}
-                            </span>
-                            {service.featured && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase">
-                                Featured
-                              </span>
-                            )}
+                        <div className="flex items-start space-x-3.5">
+                          <div className="shrink-0 w-12 h-12 rounded-xl overflow-hidden border border-slate-800 bg-slate-950 mt-0.5">
+                            <ServiceThumbnail
+                              src={service.thumbnail_url}
+                              alt={service.name}
+                              platform={service.platform}
+                              size="xs"
+                              aspectRatio="square"
+                              className="w-full h-full"
+                            />
                           </div>
-                          <p className="text-white font-semibold text-sm leading-snug">{service.name}</p>
-                          <p className="text-slate-400 text-[11px] line-clamp-1">{service.short_description}</p>
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${platformConfig?.badgeBg || 'bg-slate-800 text-slate-300'}`}>
+                                {service.platform || 'General'}
+                              </span>
+                              {service.featured && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase">
+                                  Featured
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-white font-semibold text-sm leading-snug line-clamp-1">{service.name}</p>
+                            <p className="text-slate-400 text-[11px] line-clamp-1">{service.short_description}</p>
+                            <div className="flex items-center space-x-2 pt-1 text-[10px] text-slate-400">
+                              <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-indigo-300 font-mono">
+                                <Layers className="w-3 h-3 text-indigo-400" />
+                                <span>{(service.ordering_fields && service.ordering_fields.length) || getDefaultFieldsForService(service).length} Fields</span>
+                              </span>
+                              {service.min_quantity && (
+                                <span>Min: {service.min_quantity.toLocaleString()}</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </td>
 
@@ -791,6 +924,15 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
                 />
               </div>
 
+              {/* Thumbnail URL (External Image Link Only - Zero Supabase Storage) */}
+              <ServiceThumbnailUrlField
+                value={modalService.thumbnail_url || ''}
+                onChange={(url) => setModalService({ ...modalService, thumbnail_url: url })}
+                platform={modalService.platform}
+                label="Thumbnail URL"
+                placeholder="https://example.com/service-thumbnail.jpg"
+              />
+
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
                   Instructions for Customer
@@ -802,6 +944,241 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
                   placeholder="1. Provide your public profile link.\n2. Ensure account is set to PUBLIC."
                   className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
                 />
+              </div>
+
+              {/* 3. DYNAMIC ORDERING FIELDS CONFIGURATION BUILDER */}
+              <div className="pt-2 border-t border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-1.5">
+                      <Settings2 className="w-3.5 h-3.5 text-violet-400" />
+                      <span>Customer Ordering Fields Configuration</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Fields dynamically displayed to customers at checkout (URLs, handles, instructions).
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={handleResetToPlatformDefaults}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold transition cursor-pointer flex items-center space-x-1"
+                      title="Load recommended default fields for this platform & service"
+                    >
+                      <RefreshCw className="w-3 h-3 text-slate-400" />
+                      <span>Load Defaults</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddField}
+                      className="px-2.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-semibold transition cursor-pointer flex items-center space-x-1 shadow-sm"
+                    >
+                      <ListPlus className="w-3 h-3" />
+                      <span>Add Field</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Field List Cards */}
+                {modalService.ordering_fields && modalService.ordering_fields.length > 0 ? (
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                    {modalService.ordering_fields.map((field, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800/90 space-y-3 relative group"
+                      >
+                        {/* Header of Field */}
+                        <div className="flex items-center justify-between border-b border-slate-900 pb-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="w-5 h-5 rounded-full bg-violet-500/20 text-violet-300 text-[10px] font-bold flex items-center justify-center">
+                              {idx + 1}
+                            </span>
+                            <span className="text-xs font-semibold text-white truncate max-w-[180px]">
+                              {field.label || 'Untitled Field'}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase bg-slate-900 text-slate-400 border border-slate-800">
+                              {field.field_type}
+                            </span>
+                            {field.required && (
+                              <span className="text-[9px] font-bold text-rose-400">Required</span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveField(idx, 'up')}
+                              disabled={idx === 0}
+                              className="p-1 rounded text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                              title="Move up"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveField(idx, 'down')}
+                              disabled={idx === (modalService.ordering_fields?.length || 0) - 1}
+                              className="p-1 rounded text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                              title="Move down"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteField(idx)}
+                              className="p-1 rounded text-rose-400 hover:text-rose-300 cursor-pointer ml-1"
+                              title="Delete field"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Field Configuration Inputs */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          {/* Label */}
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                              Field Label *
+                            </label>
+                            <input
+                              type="text"
+                              value={field.label}
+                              onChange={(e) => handleUpdateField(idx, { label: e.target.value })}
+                              placeholder="e.g. Instagram Profile Link or Username"
+                              required
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
+                            />
+                          </div>
+
+                          {/* Field Type */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                              Field Type *
+                            </label>
+                            <select
+                              value={field.field_type}
+                              onChange={(e) => handleUpdateField(idx, { field_type: e.target.value as any })}
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
+                            >
+                              <option value="url">URL (Link)</option>
+                              <option value="text">Text (Single Line / Username)</option>
+                              <option value="textarea">Long Text (Textarea / Multi-line)</option>
+                              <option value="number">Number</option>
+                              <option value="select">Dropdown / Select</option>
+                              <option value="checkbox">Checkbox</option>
+                            </select>
+                          </div>
+
+                          {/* Field Key */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                              Internal Key (name) *
+                            </label>
+                            <input
+                              type="text"
+                              value={field.field_key}
+                              onChange={(e) => handleUpdateField(idx, { field_key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') })}
+                              placeholder="target_url"
+                              required
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-violet-500"
+                            />
+                          </div>
+
+                          {/* Placeholder */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                              Placeholder Text
+                            </label>
+                            <input
+                              type="text"
+                              value={field.placeholder || ''}
+                              onChange={(e) => handleUpdateField(idx, { placeholder: e.target.value })}
+                              placeholder="https://instagram.com/username"
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:outline-none focus:border-violet-500"
+                            />
+                          </div>
+
+                          {/* Validation Rule */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                              Validation Rule
+                            </label>
+                            <select
+                              value={field.validation_rule || 'none'}
+                              onChange={(e) => handleUpdateField(idx, { validation_rule: e.target.value })}
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
+                            >
+                              <option value="none">Standard Check</option>
+                              <option value="url">Valid Web URL (http/https)</option>
+                              <option value="instagram_profile">Instagram Profile / Handle</option>
+                              <option value="youtube_channel">YouTube Channel Link</option>
+                              <option value="twitter_handle">X / Twitter Handle</option>
+                            </select>
+                          </div>
+
+                          {/* Help Text */}
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                              Help Text / Hint for Customer
+                            </label>
+                            <input
+                              type="text"
+                              value={field.help_text || ''}
+                              onChange={(e) => handleUpdateField(idx, { help_text: e.target.value })}
+                              placeholder="Ensure account is public during processing. No passwords required."
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:outline-none focus:border-violet-500"
+                            />
+                          </div>
+
+                          {/* Required Toggle */}
+                          <div className="flex items-center pt-5">
+                            <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={field.required}
+                                onChange={(e) => handleUpdateField(idx, { required: e.target.checked })}
+                                className="rounded border-slate-800 bg-slate-900 text-violet-600 focus:ring-violet-500"
+                              />
+                              <span className="font-semibold text-white">Compulsory Field</span>
+                            </label>
+                          </div>
+
+                          {/* If select: Dropdown Options */}
+                          {field.field_type === 'select' && (
+                            <div className="sm:col-span-3">
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                                Dropdown Options (Comma-separated)
+                              </label>
+                              <input
+                                type="text"
+                                value={field.options ? field.options.join(', ') : ''}
+                                onChange={(e) =>
+                                  handleUpdateField(idx, {
+                                    options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+                                  })
+                                }
+                                placeholder="Like, Love, Care, Wow, Haha"
+                                className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center space-y-2">
+                    <p className="text-xs text-slate-400">No custom ordering fields configured for this service.</p>
+                    <button
+                      type="button"
+                      onClick={handleResetToPlatformDefaults}
+                      className="px-3 py-1.5 rounded-lg bg-violet-600/20 text-violet-300 border border-violet-500/30 text-xs font-semibold hover:bg-violet-600/30 transition cursor-pointer"
+                    >
+                      Click to load recommended fields for {modalService.platform || 'this platform'}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Status & Featured */}

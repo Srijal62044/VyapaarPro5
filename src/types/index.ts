@@ -301,11 +301,29 @@ export interface StoreProduct {
   max_quantity?: number | null;
   delivery_time_info?: string | null;
   sort_order?: number | null;
+  ordering_fields?: SocialServiceFieldConfig[] | null;
 
   status: StoreProductStatus;
   featured: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export type SocialFieldType = 'text' | 'url' | 'number' | 'textarea' | 'long_text' | 'select' | 'checkbox';
+
+export interface SocialServiceFieldConfig {
+  id?: string;
+  field_key: string;
+  label: string;
+  field_type: SocialFieldType;
+  placeholder?: string;
+  help_text?: string;
+  required: boolean;
+  min_length?: number;
+  max_length?: number;
+  validation_rule?: string;
+  options?: string[];
+  display_order: number;
 }
 
 export type StoreOrderStatus =
@@ -330,6 +348,7 @@ export interface StoreOrderItem {
   unit_price_paise: number;
   quantity: number;
   total_paise: number;
+  fields_snapshot?: Record<string, any> | null;
   created_at?: string;
   product?: StoreProduct;
 }
@@ -392,6 +411,11 @@ export interface StoreOrder {
   customer_phone?: string;
   idempotency_key?: string;
   
+  // Social Service Dynamic Ordering Fields Snapshot
+  service_fields_snapshot?: Record<string, any> | null;
+  target_url?: string | null;
+  target_username?: string | null;
+  
   // Manual Review & Approval Fields
   payment_reviewed_at?: string | null;
   payment_reviewed_by?: string | null;
@@ -442,5 +466,100 @@ export interface StoreDashboardStats {
   pending_reviews: number;
   total_delivered: number;
   total_revenue_paise: number;
+}
+
+// ============================================================================
+// AI SUPPORT & CUSTOMER TICKETING TYPES
+// ============================================================================
+
+export type SupportTicketCategory =
+  | 'General'
+  | 'Service'
+  | 'Store'
+  | 'Payment'
+  | 'Order'
+  | 'Delivery'
+  | 'Technical'
+  | 'Other';
+
+export type SupportTicketPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export type SupportTicketStatus =
+  | 'open'
+  | 'in_progress'
+  | 'waiting_for_customer'
+  | 'resolved'
+  | 'closed';
+
+export interface SupportTicket {
+  id: string;
+  ticket_number: string;
+  user_id?: string | null;
+  guest_name?: string | null;
+  guest_email?: string | null;
+  guest_phone?: string | null;
+  subject: string;
+  message: string;
+  category: SupportTicketCategory;
+  priority: SupportTicketPriority;
+  status: SupportTicketStatus;
+  order_id?: string | null;
+  assigned_admin_id?: string | null;
+  internal_notes?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  messages?: SupportTicketMessage[];
+}
+
+export interface SupportTicketMessage {
+  id: string;
+  ticket_id: string;
+  sender_type: 'customer' | 'admin' | 'system';
+  sender_id?: string | null;
+  sender_name?: string | null;
+  message: string;
+  is_internal: boolean;
+  created_at: string;
+}
+
+export interface SupportConversation {
+  id: string;
+  user_id?: string | null;
+  guest_session_id?: string | null;
+  title?: string | null;
+  status: 'active' | 'closed' | 'archived';
+  requires_human: boolean;
+  context_type?: 'general' | 'product' | 'service' | 'order';
+  context_id?: string | null;
+  metadata?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+  messages?: SupportMessage[];
+}
+
+export interface SupportMessage {
+  id: string;
+  conversation_id: string;
+  sender_type: 'customer' | 'ai' | 'admin' | 'system';
+  message: string;
+  metadata?: Record<string, any>;
+  created_at: string;
+}
+
+export interface AISupportSettings {
+  id: string;
+  is_enabled: boolean;
+  welcome_message: string;
+  fallback_message: string;
+  system_instructions: string;
+  max_messages_per_conversation: number;
+  rate_limit_per_minute: number;
+  human_handoff_enabled: boolean;
+  allowed_knowledge_sources: string[];
+  support_email: string;
+  support_phone: string;
+  custom_knowledge: string;
+  updated_at: string;
 }
 

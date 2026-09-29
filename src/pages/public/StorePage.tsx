@@ -89,17 +89,19 @@ export const StorePage: React.FC = () => {
   const filteredProducts = products
     .filter((p) => {
       if (selectedPlatform !== 'all') {
-        const target = selectedPlatform.toLowerCase();
+        const target = selectedPlatform.toLowerCase().replace(/^cat-/, '');
         const plat = (p.platform || '').toLowerCase();
-        const cat = (p.category_id || '').toLowerCase();
+        const cat = (p.category_id || '').toLowerCase().replace(/^cat-/, '');
+        const catName = (p.category_name || '').toLowerCase();
         const slug = (p.slug || '').toLowerCase();
 
         const matchesPlatform =
           plat === target ||
           (target === 'twitter' && (plat === 'x' || plat === 'twitter')) ||
+          (target === 'x' && (plat === 'x' || plat === 'twitter')) ||
           (target === 'digital' && (!p.platform || plat === 'digital' || plat === 'boilerplate')) ||
           cat === target ||
-          cat === `cat-${target}` ||
+          catName.includes(target) ||
           slug.startsWith(target) ||
           slug.includes(target);
 

@@ -14,6 +14,7 @@ import {
 import { dataService } from '../../services/store';
 import { ServiceItem } from '../../types';
 import { SEO } from '../../components/common/SEO';
+import { ServiceThumbnail } from '../../components/common/ServiceThumbnail';
 
 export const AdminServicesPage: React.FC = () => {
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -128,11 +129,15 @@ export const AdminServicesPage: React.FC = () => {
                 <tr key={service.id} className="hover:bg-slate-800/40 transition">
                   <td className="py-3.5 px-4 font-semibold text-white">
                     <div className="flex items-center space-x-3">
-                      <img
-                        src={service.thumbnail_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80'}
-                        alt={service.name}
-                        className="w-8 h-8 rounded-lg object-cover shrink-0 bg-slate-950"
-                      />
+                      <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-slate-800 bg-slate-950">
+                        <ServiceThumbnail
+                          src={service.thumbnail_url}
+                          alt={service.name}
+                          size="xs"
+                          aspectRatio="square"
+                          className="w-full h-full"
+                        />
+                      </div>
                       <div>
                         <span className="block">{service.name}</span>
                         <span className="text-[10px] text-slate-400 font-mono">/{service.slug}</span>
