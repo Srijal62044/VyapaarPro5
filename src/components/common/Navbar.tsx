@@ -6,7 +6,8 @@ import {
   X,
   User,
   Shield,
-  Briefcase,
+  ShoppingBag,
+  Download,
   ChevronDown,
   LogOut,
   Layers,
@@ -35,6 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
   const navLinks = [
     { label: 'Services', href: '/services' },
     { label: 'Store', href: '/store' },
+    { label: 'Track Orders', href: '/orders' },
     { label: 'Portfolio', href: '/portfolio' },
     { label: 'About Agency', href: '/about' },
     { label: 'Contact', href: '/contact' },
@@ -46,9 +48,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
       <div className="bg-gradient-to-r from-indigo-950/60 via-purple-950/40 to-slate-950/60 border-b border-indigo-900/20 py-1.5 px-4 text-center text-xs text-indigo-300 hidden md:flex items-center justify-between">
         <div className="flex items-center space-x-2 mx-auto">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Accepting New Client Projects for Q3/Q4. Full-stack development & bespoke design.</span>
+          <span>Social Media Growth Services & Custom Software Development. Instant Automated Delivery.</span>
           <span className="text-slate-500">|</span>
-          <span className="text-slate-400">Direct WhatsApp Consultation: {settings.phone}</span>
+          <span className="text-slate-400">Direct Consultation: {settings.phone}</span>
         </div>
       </div>
 
@@ -82,24 +84,32 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
                 {isAdmin ? (
                   <Link
                     to="/admin"
-                    className="px-3 py-2 rounded-xl text-xs font-semibold bg-violet-500/10 text-violet-300 border border-violet-500/30 hover:bg-violet-500/20 transition flex items-center space-x-1.5"
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-violet-500/10 text-violet-300 border border-violet-500/30 hover:bg-violet-500/20 transition flex items-center space-x-1.5"
                   >
                     <Shield className="w-3.5 h-3.5 text-violet-400" />
                     <span>Admin Panel</span>
                   </Link>
                 ) : (
-                  <Link
-                    to="/app"
-                    className="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/20 transition flex items-center space-x-1.5"
-                  >
-                    <Briefcase className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Client Portal</span>
-                  </Link>
+                  <div className="flex items-center space-x-1.5">
+                    <Link
+                      to="/orders"
+                      className="px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/20 transition flex items-center space-x-1.5"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>My Orders</span>
+                    </Link>
+                    <Link
+                      to="/account"
+                      className="px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition"
+                    >
+                      Account
+                    </Link>
+                  </div>
                 )}
 
                 <button
                   onClick={logout}
-                  className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+                  className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
                   title="Sign out"
                 >
                   <LogOut className="w-4 h-4" />
@@ -174,20 +184,29 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
                     Go to Admin Dashboard
                   </Link>
                 ) : (
-                  <Link
-                    to="/app"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block w-full py-2.5 px-4 text-center rounded-xl bg-indigo-600/20 text-indigo-300 font-medium text-sm"
-                  >
-                    Go to Client Portal
-                  </Link>
+                  <>
+                    <Link
+                      to="/orders"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="block w-full py-2.5 px-4 text-center rounded-xl bg-indigo-600/20 text-indigo-300 font-medium text-sm"
+                    >
+                      My Store Orders & Downloads
+                    </Link>
+                    <Link
+                      to="/account"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="block w-full py-2 px-4 text-center rounded-xl bg-slate-900 text-slate-300 text-xs"
+                    >
+                      My Account Details
+                    </Link>
+                  </>
                 )}
                 <button
                   onClick={() => {
                     logout();
                     setMobileMenuOpen(false);
                   }}
-                  className="block w-full py-2 text-center text-slate-400 text-xs"
+                  className="block w-full py-2 text-center text-slate-400 text-xs cursor-pointer"
                 >
                   Sign Out ({profile.email})
                 </button>
@@ -198,7 +217,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
                 onClick={() => setMobileMenuOpen(false)}
                 className="block w-full py-2.5 px-4 text-center rounded-xl bg-slate-900 text-white font-medium text-sm border border-slate-800"
               >
-                Sign In / Client Account
+                Sign In / Account
               </Link>
             )}
           </div>

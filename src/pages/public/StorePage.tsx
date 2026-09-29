@@ -10,6 +10,9 @@ import {
   Zap,
   ArrowRight,
   PackageOpen,
+  Share2,
+  Code,
+  Layers,
 } from 'lucide-react';
 import { StoreCategory, StoreProduct } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
@@ -17,13 +20,30 @@ import { StoreProductCard } from '../../components/store/StoreProductCard';
 import { StoreCheckoutModal } from '../../components/store/StoreCheckoutModal';
 import { SEO } from '../../components/common/SEO';
 
+const STORE_PLATFORMS = [
+  { id: 'all', name: 'All Services & Products' },
+  { id: 'instagram', name: 'Instagram' },
+  { id: 'youtube', name: 'YouTube' },
+  { id: 'facebook', name: 'Facebook' },
+  { id: 'twitter', name: 'X / Twitter' },
+  { id: 'telegram', name: 'Telegram' },
+  { id: 'tiktok', name: 'TikTok' },
+  { id: 'threads', name: 'Threads' },
+  { id: 'snapchat', name: 'Snapchat' },
+  { id: 'pinterest', name: 'Pinterest' },
+  { id: 'linkedin', name: 'LinkedIn' },
+  { id: 'discord', name: 'Discord' },
+  { id: 'spotify', name: 'Spotify' },
+  { id: 'digital', name: 'Digital & Software' },
+];
+
 export const StorePage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const categoryParam = searchParams.get('category') || 'all';
+  const platformParam = searchParams.get('platform') || searchParams.get('category') || 'all';
 
   const [categories, setCategories] = useState<StoreCategory[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string>(categoryParam);
+  const [selectedPlatform, setSelectedPlatform] = useState<string>(platformParam);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'price_asc' | 'price_desc'>('newest');
   const [isLoading, setIsLoading] = useState(true);
@@ -51,15 +71,16 @@ export const StorePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setActiveCategory(categoryParam);
-  }, [categoryParam]);
+    setSelectedPlatform(platformParam);
+  }, [platformParam]);
 
-  const handleCategoryChange = (catId: string) => {
-    setActiveCategory(catId);
-    if (catId === 'all') {
+  const handlePlatformChange = (platId: string) => {
+    setSelectedPlatform(platId);
+    if (platId === 'all') {
+      searchParams.delete('platform');
       searchParams.delete('category');
     } else {
-      searchParams.set('category', catId);
+      searchParams.set('platform', platId);
     }
     setSearchParams(searchParams);
   };
@@ -67,15 +88,18 @@ export const StorePage: React.FC = () => {
   // Filter and sort products
   const filteredProducts = products
     .filter((p) => {
-      if (activeCategory !== 'all' && p.category_id !== activeCategory) {
-        return false;
+      if (selectedPlatform !== 'all') {
+        const matchesPlatform = p.platform === selectedPlatform;
+        const matchesCategory = p.category_id === selectedPlatform || p.category_id === `cat-${selectedPlatform}`;
+        if (!matchesPlatform && !matchesCategory) return false;
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         return (
           p.name.toLowerCase().includes(q) ||
           p.short_description.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q)
+          p.description.toLowerCase().includes(q) ||
+          (p.platform && p.platform.toLowerCase().includes(q))
         );
       }
       return true;
@@ -89,8 +113,8 @@ export const StorePage: React.FC = () => {
   return (
     <div className="min-h-screen">
       <SEO
-        title="Digital Store | VyapaarPro Digital Products & Templates"
-        description="Browse premium digital products, UI kits, full-stack boilerplate code, design tokens, and developer assets with instant download delivery."
+        title="Digital Store & Social Media Growth | VyapaarPro"
+        description="Explore social media growth services for Instagram, YouTube, Facebook, X, Telegram, and premium digital software templates with instant delivery."
       />
 
       {/* 1. HERO SECTION */}
@@ -102,7 +126,7 @@ export const StorePage: React.FC = () => {
             {/* Header Badge */}
             <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-6">
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Instant Digital Assets & Software Kits</span>
+              <span>Social Media Services & Digital Assets</span>
             </div>
 
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.15]">
@@ -110,22 +134,22 @@ export const StorePage: React.FC = () => {
             </h1>
 
             <p className="mt-4 text-sm sm:text-lg text-slate-300 leading-relaxed font-normal">
-              Production-ready digital templates, UI systems, microservices, and design resources engineered for ambitious developers and businesses.
+              High-retention social media growth packages and production-grade developer software kits with instant automated processing.
             </p>
 
             {/* Value Props Bar */}
             <div className="mt-8 pt-6 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
               <div className="flex items-center space-x-2.5">
-                <Download className="w-4 h-4 text-indigo-400 shrink-0" />
-                <span className="text-xs text-slate-300">Instant Download Access</span>
+                <Zap className="w-4 h-4 text-indigo-400 shrink-0" />
+                <span className="text-xs text-slate-300">Instant Processing & Delivery</span>
               </div>
               <div className="flex items-center space-x-2.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="text-xs text-slate-300">Verified Secure Payment</span>
+                <span className="text-xs text-slate-300">100% Non-Drop & Safe</span>
               </div>
               <div className="flex items-center space-x-2.5">
-                <Zap className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="text-xs text-slate-300">Lifetime Product Updates</span>
+                <Download className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs text-slate-300">Direct Tracking & Downloads</span>
               </div>
             </div>
           </div>
@@ -143,7 +167,7 @@ export const StorePage: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search digital products..."
+              placeholder="Search services (e.g. Instagram Followers, YouTube Views)..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
             />
           </div>
@@ -166,34 +190,25 @@ export const StorePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Category Pills (Dynamic from database) */}
-        {categories.length > 0 && (
-          <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-8 scrollbar-none">
-            <button
-              onClick={() => handleCategoryChange('all')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                activeCategory === 'all'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-              }`}
-            >
-              All Products ({products.length})
-            </button>
-            {categories.map((cat) => (
+        {/* Platform Hierarchy Pills (Dynamic from database/catalog) */}
+        <div className="flex items-center space-x-2 overflow-x-auto pb-4 mb-8 scrollbar-none">
+          {STORE_PLATFORMS.map((plat) => {
+            const isSelected = selectedPlatform === plat.id;
+            return (
               <button
-                key={cat.id}
-                onClick={() => handleCategoryChange(cat.id)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                  activeCategory === cat.id
+                key={plat.id}
+                onClick={() => handlePlatformChange(plat.id)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center space-x-1.5 ${
+                  isSelected
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
                     : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                 }`}
               >
-                {cat.name}
+                <span>{plat.name}</span>
               </button>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
 
         {/* Products Grid / Loading / Empty State */}
         {isLoading ? (
@@ -218,34 +233,27 @@ export const StorePage: React.FC = () => {
             ))}
           </div>
         ) : (
-          /* Polished Empty State - ZERO products or no search matches */
           <div className="text-center py-16 px-4 bg-slate-900/40 border border-slate-800/80 rounded-3xl max-w-xl mx-auto my-6 space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto">
               <PackageOpen className="w-8 h-8" />
             </div>
-            <h3 className="text-lg font-bold text-white">No Products Available Yet</h3>
+            <h3 className="text-lg font-bold text-white">No Services Found</h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
               {searchQuery
-                ? `No digital products matched your search query "${searchQuery}". Try a different keyword or view all categories.`
-                : 'Our engineering team is currently preparing new digital templates and product kits. Check back soon or request a custom digital solution.'}
+                ? `No items matched your search "${searchQuery}". Try selecting "All Services & Products" or a different search term.`
+                : 'No services available in this category yet. Check back soon or select another platform.'}
             </p>
-            {searchQuery && (
+            {(searchQuery || selectedPlatform !== 'all') && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+                onClick={() => {
+                  setSearchQuery('');
+                  handlePlatformChange('all');
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
               >
-                Clear Search
+                Show All Services
               </button>
             )}
-            <div className="pt-4">
-              <Link
-                to="/services"
-                className="inline-flex items-center space-x-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-semibold"
-              >
-                <span>Explore Agency Custom Services</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
           </div>
         )}
       </section>

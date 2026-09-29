@@ -1,11 +1,11 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { ScrollToTop } from './components/common/ScrollToTop';
 
 // Layouts
 import { PublicLayout } from './layouts/PublicLayout';
-import { ClientLayout } from './layouts/ClientLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 
 // Public Pages
@@ -22,25 +22,16 @@ import { ForgotPasswordPage } from './pages/public/ForgotPasswordPage';
 import { PrivacyPage } from './pages/public/PrivacyPage';
 import { TermsPage } from './pages/public/TermsPage';
 
-// Digital Store Public Pages
+// Digital Store & Customer Hub Pages
 import { StorePage } from './pages/public/StorePage';
 import { StoreDetailPage } from './pages/public/StoreDetailPage';
 import { StorePaymentResultPage } from './pages/public/StorePaymentResultPage';
+import { CustomerOrdersPage } from './pages/public/CustomerOrdersPage';
+import { CustomerOrderDetailPage } from './pages/public/CustomerOrderDetailPage';
+import { CustomerDownloadsPage } from './pages/public/CustomerDownloadsPage';
+import { CustomerAccountPage } from './pages/public/CustomerAccountPage';
 
-// Client Portal Pages
-import { ClientDashboard } from './pages/client/ClientDashboard';
-import { ClientRequestsPage } from './pages/client/ClientRequestsPage';
-import { ClientRequestDetailPage } from './pages/client/ClientRequestDetailPage';
-import { ClientProjectsPage } from './pages/client/ClientProjectsPage';
-import { ClientProjectDetailPage } from './pages/client/ClientProjectDetailPage';
-import { ClientProfilePage } from './pages/client/ClientProfilePage';
-
-// Client Digital Store Pages
-import { ClientOrdersPage } from './pages/client/ClientOrdersPage';
-import { ClientOrderDetailPage } from './pages/client/ClientOrderDetailPage';
-import { ClientDownloadsPage } from './pages/client/ClientDownloadsPage';
-
-// Admin Portal Pages
+// Admin Operations Portal Pages
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminServicesPage } from './pages/admin/AdminServicesPage';
 import { AdminServiceEditPage } from './pages/admin/AdminServiceEditPage';
@@ -54,8 +45,9 @@ import { AdminPortfolioEditPage } from './pages/admin/AdminPortfolioEditPage';
 import { AdminMessagesPage } from './pages/admin/AdminMessagesPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 
-// Admin Digital Store Pages
+// Admin Digital Store & Social Media Pages
 import { AdminStoreDashboard } from './pages/admin/AdminStoreDashboard';
+import { AdminStoreSocialServicesPage } from './pages/admin/AdminStoreSocialServicesPage';
 import { AdminStoreProductsPage } from './pages/admin/AdminStoreProductsPage';
 import { AdminStoreProductEditPage } from './pages/admin/AdminStoreProductEditPage';
 import { AdminStoreCategoriesPage } from './pages/admin/AdminStoreCategoriesPage';
@@ -63,20 +55,39 @@ import { AdminStoreOrdersPage } from './pages/admin/AdminStoreOrdersPage';
 import { AdminStoreOrderDetailPage } from './pages/admin/AdminStoreOrderDetailPage';
 import { AdminStorePaymentReviewsPage } from './pages/admin/AdminStorePaymentReviewsPage';
 
+// Redirect helper for old client order links: /app/orders/:id -> /orders/:id
+const RedirectOldOrder: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/orders/${id}`} replace />;
+};
+
 export default function App() {
   return (
     <SettingsProvider>
       <AuthProvider>
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
-            {/* 1. Public Agency & Store Routes */}
+            {/* 1. Public Agency, Digital Store, and Integrated Customer Hub */}
             <Route element={<PublicLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/services" element={<ServicesPage />} />
               <Route path="/services/:slug" element={<ServiceDetailPage />} />
+              
+              {/* Store & Purchases */}
               <Route path="/store" element={<StorePage />} />
               <Route path="/store/payment-result" element={<StorePaymentResultPage />} />
               <Route path="/store/:slug" element={<StoreDetailPage />} />
+
+              {/* Customer Orders, Downloads, and Account (Unified into main site) */}
+              <Route path="/orders" element={<CustomerOrdersPage />} />
+              <Route path="/orders/:id" element={<CustomerOrderDetailPage />} />
+              <Route path="/downloads" element={<CustomerDownloadsPage />} />
+              <Route path="/account" element={<CustomerAccountPage />} />
+              <Route path="/profile" element={<CustomerAccountPage />} />
+              <Route path="/track-order" element={<CustomerOrdersPage />} />
+
+              {/* Agency Pages */}
               <Route path="/portfolio" element={<PortfolioPage />} />
               <Route path="/portfolio/:slug" element={<PortfolioDetailPage />} />
               <Route path="/about" element={<AboutPage />} />
@@ -88,20 +99,19 @@ export default function App() {
               <Route path="/terms" element={<TermsPage />} />
             </Route>
 
-            {/* 2. Client Workspace Routes */}
-            <Route path="/app" element={<ClientLayout />}>
-              <Route index element={<ClientDashboard />} />
-              <Route path="requests" element={<ClientRequestsPage />} />
-              <Route path="requests/:id" element={<ClientRequestDetailPage />} />
-              <Route path="projects" element={<ClientProjectsPage />} />
-              <Route path="projects/:id" element={<ClientProjectDetailPage />} />
-              <Route path="orders" element={<ClientOrdersPage />} />
-              <Route path="orders/:id" element={<ClientOrderDetailPage />} />
-              <Route path="downloads" element={<ClientDownloadsPage />} />
-              <Route path="profile" element={<ClientProfilePage />} />
-            </Route>
+            {/* 2. Backward Compatibility Redirects (Seamlessly redirect old separate client portal routes) */}
+            <Route path="/app" element={<Navigate to="/orders" replace />} />
+            <Route path="/app/orders" element={<Navigate to="/orders" replace />} />
+            <Route path="/app/orders/:id" element={<RedirectOldOrder />} />
+            <Route path="/app/downloads" element={<Navigate to="/downloads" replace />} />
+            <Route path="/app/profile" element={<Navigate to="/account" replace />} />
+            <Route path="/app/requests" element={<Navigate to="/account" replace />} />
+            <Route path="/app/requests/:id" element={<Navigate to="/account" replace />} />
+            <Route path="/app/projects" element={<Navigate to="/account" replace />} />
+            <Route path="/app/projects/:id" element={<Navigate to="/account" replace />} />
+            <Route path="/app/*" element={<Navigate to="/orders" replace />} />
 
-            {/* 3. Agency Admin Operations Routes */}
+            {/* 3. Agency Admin Operations Routes (Strictly Isolated & Admin Only) */}
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="services" element={<AdminServicesPage />} />
@@ -117,8 +127,10 @@ export default function App() {
               <Route path="portfolio/:id" element={<AdminPortfolioEditPage />} />
               <Route path="messages" element={<AdminMessagesPage />} />
 
-              {/* Digital Store Admin Routes */}
+              {/* Digital Store & Social Media Management */}
               <Route path="store" element={<AdminStoreDashboard />} />
+              <Route path="store/social-services" element={<AdminStoreSocialServicesPage />} />
+              <Route path="social-services" element={<AdminStoreSocialServicesPage />} />
               <Route path="store/reviews" element={<AdminStorePaymentReviewsPage />} />
               <Route path="store/products" element={<AdminStoreProductsPage />} />
               <Route path="store/products/new" element={<AdminStoreProductEditPage />} />

@@ -19,6 +19,7 @@ import {
   ShoppingBag,
   Package,
   ShieldCheck,
+  Share2,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { BrandLogo } from '../components/common/BrandLogo';
@@ -66,10 +67,10 @@ export const AdminLayout: React.FC = () => {
 
           <div className="space-y-2.5 pt-2">
             <Link
-              to="/app"
+              to="/orders"
               className="block w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-semibold text-xs transition shadow-md shadow-indigo-600/20"
             >
-              Go to Client Portal Workspace
+              Go to Store Orders & Delivery
             </Link>
 
             <Link
@@ -101,6 +102,7 @@ export const AdminLayout: React.FC = () => {
     { label: 'Service Catalogue', href: '/admin/services', icon: Sparkles },
     { label: 'Service Requests', href: '/admin/requests', icon: Inbox },
     { label: 'Projects & Milestones', href: '/admin/projects', icon: FolderKanban },
+    { label: 'Social Media Services', href: '/admin/store/social-services', icon: Share2 },
     { label: 'Digital Store', href: '/admin/store', icon: ShoppingBag },
     { label: 'Payment Reviews', href: '/admin/store/reviews', icon: ShieldCheck },
     { label: 'Store Products', href: '/admin/store/products', icon: Package },

@@ -294,6 +294,14 @@ export interface StoreProduct {
   license_key?: string | null;
   delivery_notes?: string | null;
 
+  // Social Media & Service Metadata
+  platform?: string | null; // e.g. 'instagram' | 'youtube' | 'facebook' | 'twitter' | 'telegram' | 'tiktok' | 'threads' | 'snapchat' | 'pinterest' | 'linkedin' | 'discord' | 'spotify' | 'digital'
+  service_type?: string | null; // e.g. 'followers' | 'likes' | 'views' | 'subscribers' | 'comments' | 'members'
+  min_quantity?: number | null;
+  max_quantity?: number | null;
+  delivery_time_info?: string | null;
+  sort_order?: number | null;
+
   status: StoreProductStatus;
   featured: boolean;
   created_at?: string;

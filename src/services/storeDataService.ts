@@ -10,11 +10,12 @@ import {
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { generateReferenceCode } from './store';
+import { INITIAL_STORE_CATEGORIES, INITIAL_STORE_PRODUCTS } from './storeSeedData';
 
 // Storage keys for offline / preview mode fallback (Contains ZERO fake records by default)
 const STORE_STORAGE_KEYS = {
-  CATEGORIES: 'vp_store_categories_v1',
-  PRODUCTS: 'vp_store_products_v1',
+  CATEGORIES: 'vp_store_categories_v2',
+  PRODUCTS: 'vp_store_products_v2',
   ORDERS: 'vp_store_orders_v1',
   ORDER_ITEMS: 'vp_store_order_items_v1',
   PAYMENTS: 'vp_store_payments_v1',
@@ -74,7 +75,7 @@ export const storeDataService = {
         }
 
         const { data, error } = await query;
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           return data as StoreCategory[];
         }
       } catch (err) {
@@ -82,9 +83,36 @@ export const storeDataService = {
       }
     }
 
-    // Local Storage Fallback (starts empty)
+    // Local Storage / Seed Fallback (idempotent initialization)
     const raw = safeStoreGet(STORE_STORAGE_KEYS.CATEGORIES);
-    const list: StoreCategory[] = raw ? JSON.parse(raw) : [];
+    let list: StoreCategory[] = raw ? JSON.parse(raw) : [];
+
+    if (list.length === 0) {
+      const now = new Date().toISOString();
+      list = INITIAL_STORE_CATEGORIES.map((c) => ({
+        ...c,
+        created_at: now,
+        updated_at: now,
+      }));
+      safeStoreSet(STORE_STORAGE_KEYS.CATEGORIES, JSON.stringify(list));
+    } else {
+      // Ensure any newly added platform categories are present
+      let changed = false;
+      for (const initCat of INITIAL_STORE_CATEGORIES) {
+        if (!list.some((c) => c.slug === initCat.slug)) {
+          list.push({
+            ...initCat,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          changed = true;
+        }
+      }
+      if (changed) {
+        safeStoreSet(STORE_STORAGE_KEYS.CATEGORIES, JSON.stringify(list));
+      }
+    }
+
     return onlyActive ? list.filter((c) => c.is_active) : list;
   },
 
@@ -103,7 +131,7 @@ export const storeDataService = {
     }
 
     const categories = await this.getCategories(false);
-    return categories.find((c) => c.id === id) || null;
+    return categories.find((c) => c.id === id || c.slug === id) || null;
   },
 
   async createCategory(category: Omit<StoreCategory, 'id' | 'created_at' | 'updated_at'>): Promise<StoreCategory> {
@@ -154,7 +182,7 @@ export const storeDataService = {
     }
 
     const categories = await this.getCategories(false);
-    const idx = categories.findIndex((c) => c.id === id);
+    const idx = categories.findIndex((c) => c.id === id || c.slug === id);
     if (idx === -1) throw new Error('Category not found');
 
     const updated = {
@@ -181,15 +209,16 @@ export const storeDataService = {
     }
 
     const categories = await this.getCategories(false);
-    const filtered = categories.filter((c) => c.id !== id);
+    const filtered = categories.filter((c) => c.id !== id && c.slug !== id);
     safeStoreSet(STORE_STORAGE_KEYS.CATEGORIES, JSON.stringify(filtered));
   },
 
   // ============================================================================
-  // 2. PRODUCTS
+  // 2. PRODUCTS & SOCIAL MEDIA SERVICES
   // ============================================================================
   async getProducts(params?: {
     categoryId?: string;
+    platform?: string;
     status?: StoreProductStatus;
     featured?: boolean;
     search?: string;
@@ -200,12 +229,17 @@ export const storeDataService = {
         let query = supabase
           .from('store_products')
           .select('*, store_categories(name)')
+          .order('sort_order', { ascending: true })
           .order('created_at', { ascending: false });
 
         if (!params?.includeAllStatuses) {
           query = query.eq('status', params?.status || 'PUBLISHED');
         } else if (params?.status) {
           query = query.eq('status', params.status);
+        }
+
+        if (params?.platform && params.platform !== 'all') {
+          query = query.eq('platform', params.platform);
         }
 
         if (params?.categoryId && params.categoryId !== 'all') {
@@ -222,7 +256,7 @@ export const storeDataService = {
         }
 
         const { data, error } = await query;
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           return data.map((item: any) => ({
             ...item,
             category_name: item.store_categories?.name || undefined,
@@ -238,9 +272,38 @@ export const storeDataService = {
       }
     }
 
-    // Local Storage Fallback
+    // Local Storage / Seed Fallback (idempotent initialization)
     const raw = safeStoreGet(STORE_STORAGE_KEYS.PRODUCTS);
     let list: StoreProduct[] = raw ? JSON.parse(raw) : [];
+
+    if (list.length === 0) {
+      const now = new Date().toISOString();
+      list = INITIAL_STORE_PRODUCTS.map((p, idx) => ({
+        id: `sp-${p.slug}-${idx + 1}`,
+        ...p,
+        created_at: now,
+        updated_at: now,
+      }));
+      safeStoreSet(STORE_STORAGE_KEYS.PRODUCTS, JSON.stringify(list));
+    } else {
+      // Ensure missing default services are added without touching modified ones
+      let changed = false;
+      for (let i = 0; i < INITIAL_STORE_PRODUCTS.length; i++) {
+        const initProd = INITIAL_STORE_PRODUCTS[i];
+        if (!list.some((p) => p.slug === initProd.slug)) {
+          list.push({
+            id: `sp-${initProd.slug}-${Date.now()}-${i}`,
+            ...initProd,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          changed = true;
+        }
+      }
+      if (changed) {
+        safeStoreSet(STORE_STORAGE_KEYS.PRODUCTS, JSON.stringify(list));
+      }
+    }
 
     if (!params?.includeAllStatuses) {
       list = list.filter((p) => p.status === (params?.status || 'PUBLISHED'));
@@ -248,8 +311,12 @@ export const storeDataService = {
       list = list.filter((p) => p.status === params.status);
     }
 
+    if (params?.platform && params.platform !== 'all') {
+      list = list.filter((p) => p.platform === params.platform);
+    }
+
     if (params?.categoryId && params.categoryId !== 'all') {
-      list = list.filter((p) => p.category_id === params.categoryId);
+      list = list.filter((p) => p.category_id === params.categoryId || p.platform === params.categoryId);
     }
 
     if (params?.featured !== undefined) {
@@ -262,7 +329,8 @@ export const storeDataService = {
         (p) =>
           p.name.toLowerCase().includes(q) ||
           p.short_description.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q)
+          p.description.toLowerCase().includes(q) ||
+          (p.platform && p.platform.toLowerCase().includes(q))
       );
     }
 
@@ -295,7 +363,7 @@ export const storeDataService = {
     }
 
     const products = await this.getProducts({ includeAllStatuses: true });
-    return products.find((p) => p.slug === slug) || null;
+    return products.find((p) => p.slug === slug || p.id === slug) || null;
   },
 
   async getProductById(id: string): Promise<StoreProduct | null> {
@@ -324,7 +392,7 @@ export const storeDataService = {
     }
 
     const products = await this.getProducts({ includeAllStatuses: true });
-    return products.find((p) => p.id === id) || null;
+    return products.find((p) => p.id === id || p.slug === id) || null;
   },
 
   async createProduct(productData: Omit<StoreProduct, 'id' | 'created_at' | 'updated_at'>): Promise<StoreProduct> {
@@ -349,6 +417,12 @@ export const storeDataService = {
           access_info: productData.access_info?.trim() || null,
           license_key: productData.license_key?.trim() || null,
           delivery_notes: productData.delivery_notes?.trim() || null,
+          platform: productData.platform?.trim() || null,
+          service_type: productData.service_type?.trim() || null,
+          min_quantity: productData.min_quantity || null,
+          max_quantity: productData.max_quantity || null,
+          delivery_time_info: productData.delivery_time_info?.trim() || null,
+          sort_order: productData.sort_order || 0,
           status: productData.status,
           featured: productData.featured || false,
         })
@@ -382,6 +456,12 @@ export const storeDataService = {
           access_info: updates.access_info !== undefined ? (updates.access_info?.trim() || null) : undefined,
           license_key: updates.license_key !== undefined ? (updates.license_key?.trim() || null) : undefined,
           delivery_notes: updates.delivery_notes !== undefined ? (updates.delivery_notes?.trim() || null) : undefined,
+          platform: updates.platform !== undefined ? (updates.platform?.trim() || null) : undefined,
+          service_type: updates.service_type !== undefined ? (updates.service_type?.trim() || null) : undefined,
+          min_quantity: updates.min_quantity !== undefined ? updates.min_quantity : undefined,
+          max_quantity: updates.max_quantity !== undefined ? updates.max_quantity : undefined,
+          delivery_time_info: updates.delivery_time_info !== undefined ? (updates.delivery_time_info?.trim() || null) : undefined,
+          sort_order: updates.sort_order !== undefined ? updates.sort_order : undefined,
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
@@ -393,7 +473,7 @@ export const storeDataService = {
     }
 
     const products = await this.getProducts({ includeAllStatuses: true });
-    const idx = products.findIndex((p) => p.id === id);
+    const idx = products.findIndex((p) => p.id === id || p.slug === id);
     if (idx === -1) throw new Error('Product not found');
 
     const updated = {

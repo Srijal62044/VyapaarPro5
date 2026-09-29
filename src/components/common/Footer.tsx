@@ -144,18 +144,23 @@ export const Footer: React.FC = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/app/downloads" className="hover:text-indigo-400 transition">
+                <Link to="/downloads" className="hover:text-indigo-400 transition">
                   Customer Downloads
                 </Link>
               </li>
               <li>
-                <Link to="/app" className="hover:text-indigo-400 transition">
-                  Client Dashboard
+                <Link to="/orders" className="hover:text-indigo-400 transition">
+                  Track Orders & Status
+                </Link>
+              </li>
+              <li>
+                <Link to="/account" className="hover:text-indigo-400 transition">
+                  Customer Account
                 </Link>
               </li>
               <li>
                 <Link to="/login" className="hover:text-indigo-400 transition">
-                  Client Login
+                  Account Sign In
                 </Link>
               </li>
             </ul>

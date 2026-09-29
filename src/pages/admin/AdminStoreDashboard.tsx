@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Sparkles,
   RefreshCw,
+  Share2,
 } from 'lucide-react';
 import { StoreDashboardStats, StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
@@ -68,6 +69,13 @@ export const AdminStoreDashboard: React.FC = () => {
           >
             <RefreshCw className="w-4 h-4" />
           </button>
+          <Link
+            to="/admin/store/social-services"
+            className="px-3 py-2 rounded-xl bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300 text-xs font-semibold transition flex items-center space-x-1.5"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>Social Media Services</span>
+          </Link>
           <Link
             to="/admin/store/categories"
             className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-medium transition"
@@ -137,7 +145,18 @@ export const AdminStoreDashboard: React.FC = () => {
       </div>
 
       {/* Quick Navigation Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+        <Link
+          to="/admin/store/social-services"
+          className="p-5 rounded-2xl bg-violet-950/20 border border-violet-500/30 hover:border-violet-500/60 transition group"
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-violet-300 group-hover:text-violet-200">Social Media</h3>
+            <ArrowRight className="w-4 h-4 text-violet-500 group-hover:text-violet-400 group-hover:translate-x-0.5 transition" />
+          </div>
+          <p className="text-xs text-violet-400/70 mt-1">Manage growth services, live prices, and limits.</p>
+        </Link>
+
         <Link
           to="/admin/store/reviews"
           className="p-5 rounded-2xl bg-amber-950/20 border border-amber-500/30 hover:border-amber-500/60 transition group"
@@ -154,7 +173,7 @@ export const AdminStoreDashboard: React.FC = () => {
           className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-violet-500/50 transition group"
         >
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white group-hover:text-violet-300">Product Management</h3>
+            <h3 className="text-sm font-bold text-white group-hover:text-violet-300">Product Catalogue</h3>
             <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-violet-400 group-hover:translate-x-0.5 transition" />
           </div>
           <p className="text-xs text-slate-400 mt-1">Upload digital packages, set pricing, and publish items.</p>
@@ -179,7 +198,7 @@ export const AdminStoreDashboard: React.FC = () => {
             <h3 className="text-sm font-bold text-white group-hover:text-violet-300">Orders & Invoices</h3>
             <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-violet-400 group-hover:translate-x-0.5 transition" />
           </div>
-          <p className="text-xs text-slate-400 mt-1">Inspect transactions, customer emails, and download logs.</p>
+          <p className="text-xs text-slate-400 mt-1">Inspect transactions, customer details, and logs.</p>
         </Link>
       </div>
 
