@@ -26,6 +26,7 @@ import supportTicketReplyHandler from './api/support/tickets/reply.js';
 import supportAdminHandler from './api/support/admin/index.js';
 import supportSettingsHandler from './api/support/settings.js';
 import uploadValidateHandler from './api/upload-validate.js';
+import adminClientsHandler from './api/admin/clients.js';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -59,6 +60,7 @@ app.all('/api/contact', adaptHandler(contactHandler));
 app.all('/api/service-request', adaptHandler(serviceRequestHandler));
 app.all('/api/rate-limit', adaptHandler(rateLimitHandler));
 app.all('/api/upload-validate', adaptHandler(uploadValidateHandler));
+app.all('/api/admin/clients', adaptHandler(adminClientsHandler));
 
 // AI Support & Customer Ticketing Routes
 app.all('/api/ai-support', adaptHandler(aiSupportHandler));
@@ -98,5 +100,4 @@ async function startServer() {
 
 startServer().catch((err) => {
   console.error('Failed to start server:', err);
-  process.exit(1);
 });
