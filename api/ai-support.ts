@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-import { INITIAL_STORE_PRODUCTS } from '../src/services/storeSeedData.js';
 
 // In-memory rate limiter per IP / session ID
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -147,7 +146,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Products (from Supabase or guaranteed seed catalog)
+    // Products (from Supabase or fallback catalog)
     let productsCatalog: any[] = [];
     if (supabase) {
       const { data: dbProducts } = await supabase
@@ -159,18 +158,11 @@ export default async function handler(req: any, res: any) {
       }
     }
     if (productsCatalog.length === 0) {
-      productsCatalog = INITIAL_STORE_PRODUCTS.map((p) => ({
-        name: p.name,
-        slug: p.slug,
-        platform: p.platform,
-        service_type: p.service_type,
-        short_description: p.short_description,
-        price_paise: p.price_paise,
-        min_quantity: p.min_quantity,
-        max_quantity: p.max_quantity,
-        delivery_time_info: p.delivery_time_info,
-        status: p.status,
-      }));
+      productsCatalog = [
+        { name: 'Instagram Followers (HQ Real)', slug: 'instagram-followers-hq', platform: 'Instagram', service_type: 'followers', short_description: 'High quality real Instagram followers with 30-day refill.', price_paise: 9900, min_quantity: 100, max_quantity: 100000, delivery_time_info: 'Instant start (0-1 hour)', status: 'PUBLISHED' },
+        { name: 'YouTube Monetizable Views', slug: 'youtube-views-monetizable', platform: 'YouTube', service_type: 'views', short_description: 'High-retention lifetime guaranteed YouTube views.', price_paise: 14900, min_quantity: 500, max_quantity: 500000, delivery_time_info: '1-3 hours start', status: 'PUBLISHED' },
+        { name: 'Telegram Channel Members', slug: 'telegram-members', platform: 'Telegram', service_type: 'members', short_description: 'Instant non-drop Telegram channel members.', price_paise: 7900, min_quantity: 100, max_quantity: 50000, delivery_time_info: 'Instant start', status: 'PUBLISHED' },
+      ];
     }
 
     // AI Settings & Custom Knowledge
