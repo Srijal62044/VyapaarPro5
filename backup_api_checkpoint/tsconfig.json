@@ -28,7 +28,6 @@
     "src",
     "server.ts",
     "vite.config.ts",
-    "api",
-    "server"
+    "api"
   ]
 }

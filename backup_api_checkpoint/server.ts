@@ -10,21 +10,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Import API handlers
-import createOrderHandler from './server/handlers/store/create-order.js';
-import paymentCreateHandler from './server/handlers/store/payment-create.js';
-import paymentVerifyHandler from './server/handlers/store/payment-verify.js';
-import downloadHandler from './server/handlers/store/download.js';
-import reviewOrderHandler from './server/handlers/store/review-order.js';
+import createOrderHandler from './api/store/create-order.js';
+import paymentCreateHandler from './api/store/payment/create.js';
+import paymentVerifyHandler from './api/store/payment/verify.js';
+import downloadHandler from './api/store/download.js';
+import reviewOrderHandler from './api/store/admin/review-order.js';
 import webhookHandler from './api/famgateway-webhook.js';
 import contactHandler from './api/contact.js';
 import serviceRequestHandler from './api/service-request.js';
 import rateLimitHandler from './api/rate-limit.js';
 import aiSupportHandler from './api/ai-support.js';
-import supportTicketCreateHandler from './server/handlers/support/tickets-create.js';
-import supportTicketsHandler from './server/handlers/support/tickets-index.js';
-import supportTicketReplyHandler from './server/handlers/support/tickets-reply.js';
-import supportAdminHandler from './server/handlers/support/admin.js';
-import supportSettingsHandler from './server/handlers/support/settings.js';
+import supportTicketCreateHandler from './api/support/tickets/create.js';
+import supportTicketsHandler from './api/support/tickets/index.js';
+import supportTicketReplyHandler from './api/support/tickets/reply.js';
+import supportAdminHandler from './api/support/admin/index.js';
+import supportSettingsHandler from './api/support/settings.js';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;

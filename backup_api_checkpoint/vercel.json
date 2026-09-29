@@ -47,10 +47,6 @@
   ],
   "rewrites": [
     {
-      "source": "/api/payments/famgateway/webhook",
-      "destination": "/api/famgateway-webhook"
-    },
-    {
       "source": "/((?!api/|assets/|favicon\\.ico|.*\\.[\\w]+$).*)",
       "destination": "/index.html"
     }
