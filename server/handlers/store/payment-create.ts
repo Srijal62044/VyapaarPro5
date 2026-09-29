@@ -53,7 +53,7 @@ export default async function handler(req: any, res: any) {
           order = dbOrder;
         }
       } catch (err) {
-        // Fallback to cache
+        // Safe fallback
       }
     }
 
@@ -77,7 +77,7 @@ export default async function handler(req: any, res: any) {
     // Calculate official amount in INR directly from verified order total paise
     const amountInRupees = Number((order.total_paise / 100).toFixed(2));
 
-    // Construct the absolute redirect URL for payment return
+    // Construct the absolute redirect URL for payment return after customer pays on FamGateway
     const siteUrl =
       process.env.VITE_PUBLIC_SITE_URL ||
       process.env.PUBLIC_SITE_URL ||
@@ -110,83 +110,106 @@ export default async function handler(req: any, res: any) {
     // 2. FamGateway API Key from server-side environment
     const famApiKey = process.env.FAMGATEWAY_API_KEY;
 
-    let paymentUrl = '';
-    let gatewayOrderId = '';
+    if (!famApiKey || !famApiKey.trim()) {
+      return res.status(503).json({
+        error:
+          'FAMGATEWAY_API_KEY is not configured in Vercel environment variables. Please add your FamGateway API Key to enable live checkout.',
+      });
+    }
+
+    // Official documented endpoint: https://famgateway.in/api/create-order.php
+    const famEndpoint = 'https://famgateway.in/api/create-order.php';
+
+    const gatewayPayload = {
+      amount: amountInRupees,
+      redirect_url: redirectUrl,
+      api_key: famApiKey.trim(),
+    };
+
     let rawResponseData: any = null;
 
-    if (famApiKey) {
-      // Official documented endpoint: https://famgateway.in/api/create-order.php
-      const famEndpoint = 'https://famgateway.in/api/create-order.php';
+    try {
+      const gatewayRes = await fetch(famEndpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${famApiKey.trim()}`,
+          'X-Api-Key': famApiKey.trim(),
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(gatewayPayload),
+      });
 
-      const gatewayPayload = {
-        amount: amountInRupees,
-        redirect_url: redirectUrl,
-      };
-
+      const rawText = await gatewayRes.text();
       try {
-        const gatewayRes = await fetch(famEndpoint, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${famApiKey.trim()}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(gatewayPayload),
-        });
+        rawResponseData = JSON.parse(rawText);
+      } catch {
+        rawResponseData = { rawText };
+      }
 
-        const rawText = await gatewayRes.text();
-        try {
-          rawResponseData = JSON.parse(rawText);
-        } catch {
-          rawResponseData = { rawText };
-        }
-
-        if (gatewayRes.ok && rawResponseData) {
-          paymentUrl =
-            rawResponseData.response?.data?.checkout_url ||
-            rawResponseData.data?.checkout_url ||
-            rawResponseData.checkout_url ||
-            rawResponseData.response?.data?.payment_url ||
-            rawResponseData.data?.payment_url ||
-            rawResponseData.payment_url ||
-            rawResponseData.url ||
-            rawResponseData.link ||
-            '';
-
-          gatewayOrderId =
-            rawResponseData.response?.data?.order_id ||
-            rawResponseData.data?.order_id ||
-            rawResponseData.order_id ||
-            rawResponseData.id ||
-            rawResponseData.transaction_id ||
-            '';
-        } else {
-          console.error('FamGateway API error response:', rawResponseData);
-          return res.status(502).json({
-            error:
-              rawResponseData?.message ||
-              rawResponseData?.error ||
-              'FamGateway returned an error while generating payment session.',
-            details: rawResponseData,
-          });
-        }
-      } catch (networkErr: any) {
-        console.error('FamGateway network error:', networkErr);
+      if (!gatewayRes.ok) {
+        console.error('FamGateway API error response status:', gatewayRes.status, rawResponseData);
         return res.status(502).json({
-          error: 'Could not connect to FamGateway server. Please check your network and API key.',
+          error:
+            rawResponseData?.message ||
+            rawResponseData?.error ||
+            `FamGateway gateway error (${gatewayRes.status}) while creating payment session.`,
+          details: rawResponseData,
         });
       }
-    } else {
-      // Demo / Test gateway mode for development/preview when live key is not supplied
-      gatewayOrderId = `fg_demo_${Date.now()}`;
-      paymentUrl = `${redirectUrl}&status=success&demo=1`;
-      rawResponseData = {
-        demoMode: true,
-        message: 'FAMGATEWAY_API_KEY not set - routed to demo test checkout',
-      };
+    } catch (networkErr: any) {
+      console.error('FamGateway network error:', networkErr);
+      return res.status(502).json({
+        error: 'Could not connect to FamGateway server. Please check your network and API key.',
+      });
+    }
+
+    // Comprehensive extraction of FamGateway response fields
+    const paymentData =
+      rawResponseData?.data ||
+      rawResponseData?.response?.data ||
+      rawResponseData?.response ||
+      rawResponseData ||
+      {};
+
+    const checkoutUrl =
+      paymentData.checkout_url ||
+      paymentData.payment_url ||
+      paymentData.url ||
+      paymentData.link ||
+      rawResponseData?.checkout_url ||
+      rawResponseData?.payment_url ||
+      rawResponseData?.url ||
+      rawResponseData?.link ||
+      '';
+
+    const gatewayOrderId =
+      paymentData.order_id ||
+      paymentData.id ||
+      paymentData.transaction_id ||
+      rawResponseData?.order_id ||
+      rawResponseData?.id ||
+      `fg_${Date.now()}`;
+
+    const qrUrl = paymentData.qr_url || rawResponseData?.qr_url || null;
+    const upiId = paymentData.upi_id || rawResponseData?.upi_id || null;
+    const upiIntent = paymentData.upi_intent || rawResponseData?.upi_intent || null;
+    const payableAmount = paymentData.payable_amount || paymentData.amount || amountInRupees;
+    const expiresAtIst = paymentData.expires_at_ist || rawResponseData?.expires_at_ist || null;
+
+    if (!checkoutUrl) {
+      console.error('FamGateway response did not contain a valid checkout_url:', rawResponseData);
+      return res.status(502).json({
+        error:
+          rawResponseData?.message ||
+          rawResponseData?.error ||
+          'FamGateway did not return a valid checkout URL.',
+        details: rawResponseData,
+      });
     }
 
     // 3. Record payment initiation in store_payments
-    if ((gatewayOrderId || paymentUrl) && supabase) {
+    if (supabase) {
       try {
         await supabase.from('store_payments').insert({
           order_id: order.id,
@@ -198,7 +221,9 @@ export default async function handler(req: any, res: any) {
           raw_reference_metadata: {
             famGatewayOrderCreated: true,
             amount: amountInRupees,
+            payable_amount: payableAmount,
             redirect_url: redirectUrl,
+            checkout_url: checkoutUrl,
             response: rawResponseData,
             createdAt: new Date().toISOString(),
           },
@@ -208,16 +233,24 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    // 4. Return the complete verified payment session details
     return res.status(200).json({
       success: true,
       orderId: order.id,
       orderNumber: order.order_number,
       amount: amountInRupees,
-      paymentUrl: paymentUrl || redirectUrl,
+      payable_amount: payableAmount,
+      checkout_url: checkoutUrl,
+      paymentUrl: checkoutUrl,
       gatewayOrderId,
+      order_id: gatewayOrderId,
+      qr_url: qrUrl,
+      upi_id: upiId,
+      upi_intent: upiIntent,
+      expires_at_ist: expiresAtIst,
     });
   } catch (err: any) {
-    console.error('create-order error:', err);
+    console.error('payment-create handler error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 }

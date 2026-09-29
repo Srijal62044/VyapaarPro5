@@ -6,7 +6,7 @@ import { StoreOrder } from '../types';
  * Implements the official FamGateway integration:
  * Endpoint: POST https://famgateway.in/api/create-order.php
  * Authentication: Authorization: Bearer ${FAMGATEWAY_API_KEY} (Server-side)
- * Payload: { amount, redirect_url }
+ * Payload: { amount, redirect_url, api_key }
  */
 
 export interface CreatePaymentSessionParams {
@@ -21,7 +21,14 @@ export interface CreatePaymentSessionParams {
 export interface PaymentSessionResult {
   success: boolean;
   paymentUrl?: string;
+  checkout_url?: string;
   gatewayOrderId?: string;
+  order_id?: string;
+  qr_url?: string;
+  upi_id?: string;
+  upi_intent?: string;
+  payable_amount?: number;
+  expires_at_ist?: string;
   error?: string;
 }
 
@@ -51,9 +58,12 @@ export const famGatewayService = {
         try {
           data = JSON.parse(rawText);
         } catch {
-          const isWarmup = rawText.includes('<!doctype') || rawText.includes('<html') || rawText.includes('Starting Server');
+          const isWarmup =
+            rawText.includes('<!doctype') ||
+            rawText.includes('<html') ||
+            rawText.includes('Starting Server');
           if (isWarmup && attempt < maxAttempts) {
-            console.warn(`Dev server warming up, retrying payment creation (attempt ${attempt}/${maxAttempts})...`);
+            console.warn(`Server warming up, retrying payment creation (attempt ${attempt}/${maxAttempts})...`);
             await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
             continue;
           }
@@ -68,14 +78,39 @@ export const famGatewayService = {
           throw new Error(data?.error || 'Failed to initialize FamGateway payment order.');
         }
 
+        const checkoutUrl =
+          data.checkout_url ||
+          data.paymentUrl ||
+          data.payment_url ||
+          data.url ||
+          data.link ||
+          data.data?.checkout_url ||
+          data.data?.payment_url;
+
+        if (!checkoutUrl) {
+          throw new Error(data?.error || data?.message || 'No checkout URL returned from payment server.');
+        }
+
         return {
           success: true,
-          paymentUrl: data.paymentUrl,
-          gatewayOrderId: data.gatewayOrderId,
+          paymentUrl: checkoutUrl,
+          checkout_url: checkoutUrl,
+          gatewayOrderId: data.gatewayOrderId || data.order_id || data.data?.order_id,
+          order_id: data.order_id || data.gatewayOrderId,
+          qr_url: data.qr_url || data.data?.qr_url,
+          upi_id: data.upi_id || data.data?.upi_id,
+          upi_intent: data.upi_intent || data.data?.upi_intent,
+          payable_amount: data.payable_amount || data.amount,
+          expires_at_ist: data.expires_at_ist || data.data?.expires_at_ist,
         };
       } catch (err: any) {
         lastError = err.message || 'Payment initialization failed.';
-        if (attempt < maxAttempts && (lastError.includes('initializing') || lastError.includes('unavailable') || lastError.includes('fetch'))) {
+        if (
+          attempt < maxAttempts &&
+          (lastError.includes('initializing') ||
+            lastError.includes('unavailable') ||
+            lastError.includes('fetch'))
+        ) {
           await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
           continue;
         }

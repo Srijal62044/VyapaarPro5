@@ -228,27 +228,27 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
       }
 
       // 5. Initialize FamGateway Session
-      try {
-        const sessionResult = await famGatewayService.createCheckoutSession({
-          order,
-          customer: {
-            name: name.trim(),
-            email: email.trim().toLowerCase(),
-            phone: phone.trim(),
-          },
-        });
+      const sessionResult = await famGatewayService.createCheckoutSession({
+        order,
+        customer: {
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim(),
+        },
+      });
 
-        if (sessionResult.success && sessionResult.paymentUrl) {
-          window.location.href = sessionResult.paymentUrl;
-          return;
-        }
-      } catch (gwErr) {
-        console.warn('Payment gateway initialization notice:', gwErr);
+      const checkoutUrl = sessionResult.paymentUrl || sessionResult.checkout_url;
+
+      if (sessionResult.success && checkoutUrl) {
+        // Direct customer to the official FamGateway payment checkout page
+        window.location.href = checkoutUrl;
+        return;
       }
 
-      // 6. If gateway is waiting or under review, redirect to payment status result page
-      navigate(`/store/payment-result?order_id=${encodeURIComponent(order.id)}`);
-      return;
+      // If gateway creation failed, surface the exact error on modal
+      throw new Error(
+        sessionResult.error || 'Failed to initialize FamGateway payment session. Please try again.'
+      );
     } catch (err: any) {
       console.error('Checkout error:', err);
       setErrorMessage(err.message || 'An error occurred during checkout. Please try again.');
