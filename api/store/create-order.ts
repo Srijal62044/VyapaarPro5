@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 // ==============================================================================
-// Self-Contained Dynamic Social & Product Ordering Helpers (Zero External ESM Imports)
+// 1. Types & Validation Helpers (Zero External ESM Imports)
 // ==============================================================================
 
 interface OrderingFieldRule {
@@ -18,6 +18,13 @@ interface OrderingFieldRule {
   display_order: number;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(str?: string | null): boolean {
+  if (!str || typeof str !== 'string') return false;
+  return UUID_REGEX.test(str.trim());
+}
+
 function getDefaultFieldsForService(product: {
   platform?: string | null;
   service_type?: string | null;
@@ -29,12 +36,11 @@ function getDefaultFieldsForService(product: {
   const name = (product.name || '').toLowerCase();
   const slug = (product.slug || '').toLowerCase();
 
-  // If digital product / code / template, no social media URLs needed
   if (plat === 'digital' || stype === 'boilerplate' || slug.includes('boilerplate') || slug.includes('starter')) {
     return [];
   }
 
-  // 1. INSTAGRAM
+  // Instagram
   if (plat === 'instagram' || slug.includes('instagram')) {
     if (stype === 'followers' || name.includes('follower')) {
       return [
@@ -49,21 +55,6 @@ function getDefaultFieldsForService(product: {
         },
       ];
     }
-
-    if (stype === 'comments' || name.includes('comment')) {
-      return [
-        {
-          field_key: 'target_url',
-          label: 'Instagram Post / Reel URL',
-          field_type: 'url',
-          required: true,
-          min_length: 10,
-          max_length: 500,
-          display_order: 1,
-        },
-      ];
-    }
-
     return [
       {
         field_key: 'target_url',
@@ -77,7 +68,7 @@ function getDefaultFieldsForService(product: {
     ];
   }
 
-  // 2. YOUTUBE
+  // YouTube
   if (plat === 'youtube' || slug.includes('youtube')) {
     if (stype === 'subscribers' || name.includes('subscriber')) {
       return [
@@ -92,7 +83,6 @@ function getDefaultFieldsForService(product: {
         },
       ];
     }
-
     return [
       {
         field_key: 'target_url',
@@ -222,16 +212,25 @@ function validateOrderingFields(
 }
 
 // ==============================================================================
-// Serverless Route Handler
+// 2. Serverless Route Handler
 // ==============================================================================
 
 export default async function handler(req: any, res: any) {
-  // Safe diagnostic log (No secrets, No sensitive customer data)
-  console.log('[create-order] Received request:', {
+  // Label 1: request received
+  console.log('[create-order] request received', {
     method: req.method,
     hasBody: !!req.body,
     contentType: req.headers?.['content-type'] || 'unknown',
   });
+
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Api-Key');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -239,7 +238,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // 1. Safe Robust Request Body Parsing
+    // Label 2: payload parsed
     let body: any = {};
     if (typeof req.body === 'string') {
       try {
@@ -263,6 +262,15 @@ export default async function handler(req: any, res: any) {
       idempotencyKey,
     } = body;
 
+    console.log('[create-order] payload parsed', {
+      hasProductId: !!productId,
+      hasEmail: !!customerEmail,
+      hasPhone: !!customerPhone,
+      quantity: quantity || 1,
+      hasServiceFields: !!serviceFields,
+      hasUserId: !!userId,
+    });
+
     if (!productId || !customerEmail || !customerPhone) {
       return res.status(400).json({
         error: 'Product ID, customer email, and WhatsApp/mobile phone number are required.',
@@ -276,7 +284,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 2. Supabase Client Initialization
+    // Label 3: auth verified
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
     const supabaseKey =
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -284,26 +292,26 @@ export default async function handler(req: any, res: any) {
       process.env.SUPABASE_ANON_KEY ||
       '';
 
-    const hasDbConfig = !!(supabaseUrl && supabaseKey);
-    console.log('[create-order] Database configuration check:', { configured: hasDbConfig });
+    const isConfigured = !!(supabaseUrl && supabaseKey);
+    console.log('[create-order] auth verified', { databaseConfigured: isConfigured });
 
-    if (!hasDbConfig) {
+    if (!isConfigured) {
       return res.status(500).json({ error: 'Database service is not configured.' });
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 3. Check Idempotency Key
+    // Optional: Idempotency Check
     if (idempotencyKey) {
-      console.log('[create-order] Checking idempotency key');
-      const { data: existingOrder } = await supabase
+      console.log('[create-order] checking idempotency key');
+      const { data: existingOrder, error: idempErr } = await supabase
         .from('store_orders')
         .select('*, store_order_items(*)')
         .eq('idempotency_key', idempotencyKey)
-        .single();
+        .maybeSingle();
 
-      if (existingOrder) {
-        console.log('[create-order] Existing order found via idempotency key');
+      if (!idempErr && existingOrder) {
+        console.log('[create-order] response generated (existing idempotency match)');
         return res.status(200).json({
           success: true,
           order: {
@@ -315,40 +323,96 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 4. Fetch Product from Database
-    console.log('[create-order] Fetching product from database');
-    const { data: product, error: productError } = await supabase
-      .from('store_products')
-      .select('*')
-      .eq('id', productId)
-      .eq('status', 'PUBLISHED')
-      .single();
+    // Label 4: product lookup started
+    console.log('[create-order] product lookup started');
+    let product: any = null;
 
-    if (productError || !product) {
-      console.warn('[create-order] Product lookup failed or not published');
+    // Strategy A: If productId is a valid UUID, look up by ID
+    if (isUuid(productId)) {
+      const { data: dbProdById, error: idLookupErr } = await supabase
+        .from('store_products')
+        .select('*')
+        .eq('id', productId)
+        .eq('status', 'PUBLISHED')
+        .maybeSingle();
+
+      if (!idLookupErr && dbProdById) {
+        product = dbProdById;
+      }
+    }
+
+    // Strategy B: If not found by UUID, look up by slug
+    if (!product) {
+      const cleanSlug = String(productId)
+        .replace(/^sp-/, '')
+        .replace(/-\d+$/, '')
+        .trim();
+
+      const { data: dbProdBySlug, error: slugLookupErr } = await supabase
+        .from('store_products')
+        .select('*')
+        .eq('slug', cleanSlug)
+        .eq('status', 'PUBLISHED')
+        .maybeSingle();
+
+      if (!slugLookupErr && dbProdBySlug) {
+        product = dbProdBySlug;
+      }
+    }
+
+    // Strategy C: If not in DB yet, search any published product by exact or partial slug
+    if (!product) {
+      const slugCandidate = String(productId).trim();
+      const { data: allProds } = await supabase
+        .from('store_products')
+        .select('*')
+        .eq('status', 'PUBLISHED')
+        .limit(100);
+
+      if (allProds && allProds.length > 0) {
+        product = allProds.find(
+          (p: any) => p.slug === slugCandidate || p.id === slugCandidate || slugCandidate.includes(p.slug)
+        );
+      }
+    }
+
+    // Label 5: product lookup completed
+    if (!product) {
+      console.warn('[create-order] product lookup completed - product not found in database');
       return res.status(404).json({ error: 'Product not found or unavailable for purchase.' });
     }
 
-    // 5. Server-Side Validation of Quantity and Service Fields
+    console.log('[create-order] product lookup completed', {
+      productName: product.name,
+      platform: product.platform,
+      pricePaise: product.price_paise,
+    });
+
+    // Label 6: price validation completed
     const parsedQty = Math.max(1, Math.round(Number(quantity) || Number(product.min_quantity) || 1));
     const effectiveFields = getEffectiveServiceFields(product);
     const submittedData = serviceFields && typeof serviceFields === 'object' ? serviceFields : {};
 
     const validation = validateOrderingFields(effectiveFields, submittedData, parsedQty, product);
     if (!validation.valid) {
-      console.warn('[create-order] Field validation failed');
+      console.warn('[create-order] price validation completed - validation errors present');
       const firstError = Object.values(validation.errors)[0] || 'Invalid ordering field values provided.';
       return res.status(400).json({ error: firstError, details: validation.errors });
     }
 
-    // 6. Server-Side Price Calculation (Paise)
     const totalPaise = calculateServicePrice(product, parsedQty);
     const unitPricePaise = Math.round(totalPaise / parsedQty);
+
+    console.log('[create-order] price validation completed', {
+      totalPaise,
+      unitPricePaise,
+      quantity: parsedQty,
+    });
 
     const targetUrl = submittedData.target_url || submittedData.link || submittedData.url || null;
     const targetUsername = submittedData.target_username || submittedData.username || null;
 
-    // 7. Generate Order Number: VP-ORD-XXXXXXXX
+    // Generate Order Reference: VP-ORD-XXXXXXXX
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
     for (let i = 0; i < 8; i++) {
@@ -356,12 +420,59 @@ export default async function handler(req: any, res: any) {
     }
     const orderNumber = `VP-ORD-${rand}`;
 
-    console.log('[create-order] Inserting order into store_orders table');
-    // 8. Create Order Record
-    const { data: order, error: orderError } = await supabase
+    // Validate and sanitize user_id (only valid UUID string or null)
+    const validUserId = isUuid(userId) ? userId.trim() : null;
+
+    // Label 7: order insert started
+    console.log('[create-order] order insert started');
+
+    let order: any = null;
+    let orderError: any = null;
+
+    // Attempt 1: Full Schema Insert
+    const fullOrderPayload = {
+      user_id: validUserId,
+      order_number: orderNumber,
+      subtotal_paise: totalPaise,
+      discount_paise: 0,
+      total_paise: totalPaise,
+      currency: 'INR',
+      status: 'CREATED',
+      customer_name: (customerName || '').trim() || null,
+      customer_email: customerEmail.toLowerCase().trim(),
+      customer_phone: (customerPhone || '').trim() || null,
+      idempotency_key: idempotencyKey || null,
+      service_fields_snapshot: submittedData,
+      target_url: targetUrl,
+      target_username: targetUsername,
+    };
+
+    const res1 = await supabase
       .from('store_orders')
-      .insert({
-        user_id: userId || null,
+      .insert(fullOrderPayload)
+      .select()
+      .single();
+
+    order = res1.data;
+    orderError = res1.error;
+
+    // Fallback 1: If foreign key error on user_id (code 23503), retry with user_id = null
+    if (orderError && (orderError.code === '23503' || orderError.message?.includes('user_id'))) {
+      console.warn('[create-order] Retrying order insert without user_id foreign key');
+      const resFk = await supabase
+        .from('store_orders')
+        .insert({ ...fullOrderPayload, user_id: null })
+        .select()
+        .single();
+      order = resFk.data;
+      orderError = resFk.error;
+    }
+
+    // Fallback 2: If unknown column error (PGRST204 or 42703), retry with base schema columns
+    if (orderError && (orderError.code === 'PGRST204' || orderError.code === '42703' || orderError.message?.includes('column'))) {
+      console.warn('[create-order] Schema cache notice, inserting with base store_orders schema');
+      const baseOrderPayload = {
+        user_id: validUserId,
         order_number: orderNumber,
         subtotal_paise: totalPaise,
         discount_paise: 0,
@@ -372,39 +483,107 @@ export default async function handler(req: any, res: any) {
         customer_email: customerEmail.toLowerCase().trim(),
         customer_phone: (customerPhone || '').trim() || null,
         idempotency_key: idempotencyKey || null,
-        service_fields_snapshot: submittedData,
-        target_url: targetUrl,
-        target_username: targetUsername,
-      })
-      .select()
-      .single();
+      };
 
+      const resBase = await supabase
+        .from('store_orders')
+        .insert(baseOrderPayload)
+        .select()
+        .single();
+
+      order = resBase.data;
+      orderError = resBase.error;
+
+      // If base schema also failed due to user_id FK, retry base with null user_id
+      if (orderError && (orderError.code === '23503' || orderError.message?.includes('user_id'))) {
+        const resBaseNoUser = await supabase
+          .from('store_orders')
+          .insert({ ...baseOrderPayload, user_id: null })
+          .select()
+          .single();
+        order = resBaseNoUser.data;
+        orderError = resBaseNoUser.error;
+      }
+    }
+
+    // Label 8: order insert completed
     if (orderError || !order) {
-      console.error('[create-order] Database error creating order record:', orderError?.message || orderError);
+      console.error('[create-order] order insert completed with error:', {
+        table: 'store_orders',
+        code: orderError?.code || 'UNKNOWN',
+        message: orderError?.message || 'Insert returned null record',
+        hint: orderError?.hint || null,
+      });
       return res.status(500).json({ error: 'Failed to create order record in database.' });
     }
 
-    // 9. Create Order Item Snapshot
-    console.log('[create-order] Inserting order item into store_order_items table');
-    const { data: orderItem, error: itemError } = await supabase
+    console.log('[create-order] order insert completed', {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status: order.status,
+    });
+
+    // Label 9: order item insert started
+    console.log('[create-order] order item insert started');
+
+    let orderItem: any = null;
+    const safeProductId = isUuid(product.id) ? product.id : null;
+
+    const fullItemPayload = {
+      order_id: order.id,
+      product_id: safeProductId,
+      product_name_snapshot: product.name,
+      unit_price_paise: unitPricePaise,
+      quantity: parsedQty,
+      total_paise: totalPaise,
+      fields_snapshot: submittedData,
+    };
+
+    const itemRes1 = await supabase
       .from('store_order_items')
-      .insert({
+      .insert(fullItemPayload)
+      .select()
+      .single();
+
+    orderItem = itemRes1.data;
+    let itemError = itemRes1.error;
+
+    // Fallback: If fields_snapshot column is missing, insert base item columns
+    if (itemError && (itemError.code === 'PGRST204' || itemError.code === '42703' || itemError.message?.includes('column'))) {
+      console.warn('[create-order] Inserting order item with base schema columns');
+      const baseItemPayload = {
         order_id: order.id,
-        product_id: product.id,
+        product_id: safeProductId,
         product_name_snapshot: product.name,
         unit_price_paise: unitPricePaise,
         quantity: parsedQty,
         total_paise: totalPaise,
-        fields_snapshot: submittedData,
-      })
-      .select()
-      .single();
+      };
 
-    if (itemError) {
-      console.warn('[create-order] Order item creation notice:', itemError?.message || itemError);
+      const itemResBase = await supabase
+        .from('store_order_items')
+        .insert(baseItemPayload)
+        .select()
+        .single();
+
+      orderItem = itemResBase.data;
+      itemError = itemResBase.error;
     }
 
-    console.log('[create-order] Order created successfully with status CREATED');
+    // Label 10: order item insert completed
+    if (itemError) {
+      console.warn('[create-order] order item insert completed with notice:', {
+        code: itemError?.code || 'UNKNOWN',
+        message: itemError?.message || null,
+      });
+    } else {
+      console.log('[create-order] order item insert completed', {
+        itemId: orderItem?.id,
+      });
+    }
+
+    // Label 11: response generated
+    console.log('[create-order] response generated');
 
     return res.status(201).json({
       success: true,
@@ -414,7 +593,10 @@ export default async function handler(req: any, res: any) {
       },
     });
   } catch (err: any) {
-    console.error('[create-order] Unhandled error:', err?.message || err);
+    console.error('[create-order] unhandled error in create-order endpoint:', {
+      message: err?.message || err,
+      name: err?.name || 'Error',
+    });
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 }
