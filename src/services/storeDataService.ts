@@ -62,6 +62,8 @@ export const storeDataService = {
   // 1. CATEGORIES
   // ============================================================================
   async getCategories(onlyActive = true): Promise<StoreCategory[]> {
+    let list: StoreCategory[] = [];
+
     if (isSupabaseConfigured && supabase) {
       try {
         let query = supabase
@@ -75,41 +77,54 @@ export const storeDataService = {
         }
 
         const { data, error } = await query;
-        if (!error && data && data.length > 0) {
-          return data as StoreCategory[];
+        if (!error && data) {
+          list = data as StoreCategory[];
         }
       } catch (err) {
         console.warn('Supabase getCategories error:', err);
       }
     }
 
-    // Local Storage / Seed Fallback (idempotent initialization)
+    // Merge with Local Storage / Initial Seed Categories (ensure all platforms are available)
     const raw = safeStoreGet(STORE_STORAGE_KEYS.CATEGORIES);
-    let list: StoreCategory[] = raw ? JSON.parse(raw) : [];
+    const localList: StoreCategory[] = raw ? JSON.parse(raw) : [];
 
-    if (list.length === 0) {
-      const now = new Date().toISOString();
-      list = INITIAL_STORE_CATEGORIES.map((c) => ({
-        ...c,
-        created_at: now,
-        updated_at: now,
-      }));
-      safeStoreSet(STORE_STORAGE_KEYS.CATEGORIES, JSON.stringify(list));
-    } else {
-      // Ensure any newly added platform categories are present
-      let changed = false;
-      for (const initCat of INITIAL_STORE_CATEGORIES) {
-        if (!list.some((c) => c.slug === initCat.slug)) {
-          list.push({
-            ...initCat,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-          changed = true;
-        }
+    // Ensure all INITIAL_STORE_CATEGORIES are present in list
+    const now = new Date().toISOString();
+    const missingToSeed: Array<Omit<StoreCategory, 'created_at' | 'updated_at'>> = [];
+
+    for (const initCat of INITIAL_STORE_CATEGORIES) {
+      const existsInList = list.some((c) => c.slug === initCat.slug || c.id === initCat.id);
+      if (!existsInList) {
+        const localMatch = localList.find((c) => c.slug === initCat.slug || c.id === initCat.id);
+        const catToAdd: StoreCategory = localMatch || {
+          ...initCat,
+          created_at: now,
+          updated_at: now,
+        };
+        list.push(catToAdd);
+        missingToSeed.push(initCat);
       }
-      if (changed) {
-        safeStoreSet(STORE_STORAGE_KEYS.CATEGORIES, JSON.stringify(list));
+    }
+
+    // Save to local cache
+    safeStoreSet(STORE_STORAGE_KEYS.CATEGORIES, JSON.stringify(list));
+
+    // Asynchronously insert missing categories into Supabase if configured
+    if (isSupabaseConfigured && supabase && missingToSeed.length > 0) {
+      try {
+        await supabase.from('store_categories').upsert(
+          missingToSeed.map((c) => ({
+            name: c.name,
+            slug: c.slug,
+            description: c.description,
+            is_active: c.is_active,
+            sort_order: c.sort_order,
+          })),
+          { onConflict: 'slug' }
+        );
+      } catch (e) {
+        // Non-blocking
       }
     }
 
@@ -224,40 +239,18 @@ export const storeDataService = {
     search?: string;
     includeAllStatuses?: boolean;
   }): Promise<StoreProduct[]> {
+    let list: StoreProduct[] = [];
+
     if (isSupabaseConfigured && supabase) {
       try {
-        let query = supabase
+        const { data, error } = await supabase
           .from('store_products')
           .select('*, store_categories(name)')
           .order('sort_order', { ascending: true })
           .order('created_at', { ascending: false });
 
-        if (!params?.includeAllStatuses) {
-          query = query.eq('status', params?.status || 'PUBLISHED');
-        } else if (params?.status) {
-          query = query.eq('status', params.status);
-        }
-
-        if (params?.platform && params.platform !== 'all') {
-          query = query.eq('platform', params.platform);
-        }
-
-        if (params?.categoryId && params.categoryId !== 'all') {
-          query = query.eq('category_id', params.categoryId);
-        }
-
-        if (params?.featured !== undefined) {
-          query = query.eq('featured', params.featured);
-        }
-
-        if (params?.search && params.search.trim()) {
-          const s = `%${params.search.trim()}%`;
-          query = query.or(`name.ilike.${s},short_description.ilike.${s},description.ilike.${s}`);
-        }
-
-        const { data, error } = await query;
-        if (!error && data && data.length > 0) {
-          return data.map((item: any) => ({
+        if (!error && data) {
+          list = data.map((item: any) => ({
             ...item,
             category_name: item.store_categories?.name || undefined,
             thumbnail_url: item.thumbnail_path
@@ -272,39 +265,64 @@ export const storeDataService = {
       }
     }
 
-    // Local Storage / Seed Fallback (idempotent initialization)
+    // Merge with Local Storage / Seed Fallback to ensure all social media services exist
     const raw = safeStoreGet(STORE_STORAGE_KEYS.PRODUCTS);
-    let list: StoreProduct[] = raw ? JSON.parse(raw) : [];
+    const localList: StoreProduct[] = raw ? JSON.parse(raw) : [];
 
-    if (list.length === 0) {
-      const now = new Date().toISOString();
-      list = INITIAL_STORE_PRODUCTS.map((p, idx) => ({
-        id: `sp-${p.slug}-${idx + 1}`,
-        ...p,
-        created_at: now,
-        updated_at: now,
-      }));
-      safeStoreSet(STORE_STORAGE_KEYS.PRODUCTS, JSON.stringify(list));
-    } else {
-      // Ensure missing default services are added without touching modified ones
-      let changed = false;
-      for (let i = 0; i < INITIAL_STORE_PRODUCTS.length; i++) {
-        const initProd = INITIAL_STORE_PRODUCTS[i];
-        if (!list.some((p) => p.slug === initProd.slug)) {
-          list.push({
-            id: `sp-${initProd.slug}-${Date.now()}-${i}`,
-            ...initProd,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-          changed = true;
-        }
-      }
-      if (changed) {
-        safeStoreSet(STORE_STORAGE_KEYS.PRODUCTS, JSON.stringify(list));
+    const now = new Date().toISOString();
+    const missingToSeed: Array<Omit<StoreProduct, 'id' | 'created_at' | 'updated_at'>> = [];
+
+    for (let i = 0; i < INITIAL_STORE_PRODUCTS.length; i++) {
+      const initProd = INITIAL_STORE_PRODUCTS[i];
+      const existsInList = list.some((p) => p.slug === initProd.slug);
+
+      if (!existsInList) {
+        const localMatch = localList.find((p) => p.slug === initProd.slug);
+        const prodToAdd: StoreProduct = localMatch || {
+          id: `sp-${initProd.slug}-${i + 1}`,
+          ...initProd,
+          created_at: now,
+          updated_at: now,
+        };
+        list.push(prodToAdd);
+        missingToSeed.push(initProd);
       }
     }
 
+    // Update local store
+    safeStoreSet(STORE_STORAGE_KEYS.PRODUCTS, JSON.stringify(list));
+
+    // Asynchronously insert missing services into Supabase if configured
+    if (isSupabaseConfigured && supabase && missingToSeed.length > 0) {
+      try {
+        await supabase.from('store_products').upsert(
+          missingToSeed.map((p) => ({
+            name: p.name,
+            slug: p.slug,
+            short_description: p.short_description,
+            description: p.description,
+            price_paise: p.price_paise,
+            compare_at_price_paise: p.compare_at_price_paise || null,
+            platform: p.platform || null,
+            service_type: p.service_type || null,
+            min_quantity: p.min_quantity || null,
+            max_quantity: p.max_quantity || null,
+            delivery_time_info: p.delivery_time_info || null,
+            instructions: p.instructions || null,
+            access_info: p.access_info || null,
+            delivery_notes: p.delivery_notes || null,
+            status: p.status || 'PUBLISHED',
+            featured: p.featured || false,
+            sort_order: p.sort_order || 0,
+          })),
+          { onConflict: 'slug' }
+        );
+      } catch (e) {
+        // Non-blocking
+      }
+    }
+
+    // Apply filtering on the complete guaranteed product catalog
     if (!params?.includeAllStatuses) {
       list = list.filter((p) => p.status === (params?.status || 'PUBLISHED'));
     } else if (params?.status) {
@@ -312,7 +330,14 @@ export const storeDataService = {
     }
 
     if (params?.platform && params.platform !== 'all') {
-      list = list.filter((p) => p.platform === params.platform);
+      const targetPlat = params.platform.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.platform?.toLowerCase() === targetPlat ||
+          (targetPlat === 'twitter' && (p.platform === 'x' || p.platform === 'twitter')) ||
+          p.category_id?.toLowerCase().includes(targetPlat) ||
+          p.slug.toLowerCase().startsWith(targetPlat)
+      );
     }
 
     if (params?.categoryId && params.categoryId !== 'all') {
@@ -330,7 +355,8 @@ export const storeDataService = {
           p.name.toLowerCase().includes(q) ||
           p.short_description.toLowerCase().includes(q) ||
           p.description.toLowerCase().includes(q) ||
-          (p.platform && p.platform.toLowerCase().includes(q))
+          (p.platform && p.platform.toLowerCase().includes(q)) ||
+          (p.service_type && p.service_type.toLowerCase().includes(q))
       );
     }
 

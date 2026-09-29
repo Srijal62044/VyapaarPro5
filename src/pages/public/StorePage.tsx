@@ -89,9 +89,21 @@ export const StorePage: React.FC = () => {
   const filteredProducts = products
     .filter((p) => {
       if (selectedPlatform !== 'all') {
-        const matchesPlatform = p.platform === selectedPlatform;
-        const matchesCategory = p.category_id === selectedPlatform || p.category_id === `cat-${selectedPlatform}`;
-        if (!matchesPlatform && !matchesCategory) return false;
+        const target = selectedPlatform.toLowerCase();
+        const plat = (p.platform || '').toLowerCase();
+        const cat = (p.category_id || '').toLowerCase();
+        const slug = (p.slug || '').toLowerCase();
+
+        const matchesPlatform =
+          plat === target ||
+          (target === 'twitter' && (plat === 'x' || plat === 'twitter')) ||
+          (target === 'digital' && (!p.platform || plat === 'digital' || plat === 'boilerplate')) ||
+          cat === target ||
+          cat === `cat-${target}` ||
+          slug.startsWith(target) ||
+          slug.includes(target);
+
+        if (!matchesPlatform) return false;
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -99,7 +111,8 @@ export const StorePage: React.FC = () => {
           p.name.toLowerCase().includes(q) ||
           p.short_description.toLowerCase().includes(q) ||
           p.description.toLowerCase().includes(q) ||
-          (p.platform && p.platform.toLowerCase().includes(q))
+          (p.platform && p.platform.toLowerCase().includes(q)) ||
+          (p.service_type && p.service_type.toLowerCase().includes(q))
         );
       }
       return true;

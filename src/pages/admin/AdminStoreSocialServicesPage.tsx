@@ -236,8 +236,22 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
 
   // Filtered services
   const filteredServices = services.filter((s) => {
-    if (selectedPlatform !== 'all' && s.platform !== selectedPlatform && s.category_id !== selectedPlatform) {
-      return false;
+    if (selectedPlatform !== 'all') {
+      const target = selectedPlatform.toLowerCase();
+      const plat = (s.platform || '').toLowerCase();
+      const cat = (s.category_id || '').toLowerCase();
+      const slug = (s.slug || '').toLowerCase();
+
+      const matches =
+        plat === target ||
+        (target === 'twitter' && (plat === 'x' || plat === 'twitter')) ||
+        (target === 'digital' && (!s.platform || plat === 'digital' || plat === 'boilerplate')) ||
+        cat === target ||
+        cat === `cat-${target}` ||
+        slug.startsWith(target) ||
+        slug.includes(target);
+
+      if (!matches) return false;
     }
     if (statusFilter !== 'all' && s.status !== statusFilter) {
       return false;
