@@ -1,8 +1,8 @@
-import ticketsCreateHandler from '../../server/handlers/support/tickets-create.ts';
-import ticketsIndexHandler from '../../server/handlers/support/tickets-index.ts';
-import ticketsReplyHandler from '../../server/handlers/support/tickets-reply.ts';
-import adminHandler from '../../server/handlers/support/admin.ts';
-import settingsHandler from '../../server/handlers/support/settings.ts';
+import ticketsCreateHandler from '../../server/handlers/support/tickets-create';
+import ticketsIndexHandler from '../../server/handlers/support/tickets-index';
+import ticketsReplyHandler from '../../server/handlers/support/tickets-reply';
+import adminHandler from '../../server/handlers/support/admin';
+import settingsHandler from '../../server/handlers/support/settings';
 
 /**
  * Consolidated Support API Catch-All Router for Vercel Serverless
