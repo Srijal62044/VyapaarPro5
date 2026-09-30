@@ -11,12 +11,17 @@ function sendJsonResponse(
   status: number,
   body: Record<string, any>
 ): Response | void {
+  if (res?.headersSent) {
+    return;
+  }
   const jsonStr = JSON.stringify(body);
   if (res && typeof res.status === 'function') {
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    } catch {}
     return res.status(status).json(body);
   }
 
@@ -50,14 +55,21 @@ export default async function handler(req: any, res?: any) {
   }
 
   try {
-    const authHeader = req.headers?.authorization || req.headers?.get?.('authorization') || '';
+    const authHeader = req.headers?.authorization || req.headers?.Authorization || req.headers?.get?.('authorization') || '';
     const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    console.log('[ADMIN APPROVAL] Request received:', {
+      method: req.method,
+      hasAuthHeader: !!authHeader,
+      tokenLength: token.length,
+    });
 
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
     const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
 
     if (!supabaseUrl || !serviceRoleKey) {
+      console.error('[ADMIN APPROVAL] Database service unconfigured: Missing supabaseUrl or serviceRoleKey');
       return sendJsonResponse(res, 500, {
         success: false,
         error: 'Database service unconfigured.',
@@ -86,7 +98,7 @@ export default async function handler(req: any, res?: any) {
       }
     }
 
-    console.log('[review-order] Admin auth evaluation:', {
+    console.log('[ADMIN APPROVAL] Admin authenticated:', {
       hasToken: !!token,
       adminEmail: adminEmail || 'NONE',
       isAdmin,
@@ -99,13 +111,21 @@ export default async function handler(req: any, res?: any) {
       });
     }
 
+    console.log('[ADMIN APPROVAL] Supabase client initialized.');
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+    // Parse request body defensively
     let body = req.body;
-    if (typeof body === 'string') {
+    if (Buffer.isBuffer(body)) {
+      try {
+        body = JSON.parse(body.toString('utf-8'));
+      } catch {
+        body = {};
+      }
+    } else if (typeof body === 'string') {
       try {
         body = JSON.parse(body);
-      } catch (e) {
+      } catch {
         body = {};
       }
     } else if (!body && typeof req.json === 'function') {
@@ -113,9 +133,16 @@ export default async function handler(req: any, res?: any) {
     }
     body = body || {};
 
-    const { orderId, action, reason, deliveryNotes, adminNotes } = body;
+    const rawOrderId = body.orderId || body.order_id || body.orderNumber || body.order_number || body.reference;
+    const action = body.action || body.reviewAction || body.status;
+    const { reason, deliveryNotes, adminNotes } = body;
 
-    if (!orderId || !action) {
+    console.log('[ADMIN APPROVAL] Body parsed & identifier extracted:', {
+      action,
+      extractedIdentifier: rawOrderId ? String(rawOrderId).slice(0, 36) : 'NONE',
+    });
+
+    if (!rawOrderId || !action) {
       return sendJsonResponse(res, 400, {
         success: false,
         error: 'Order ID and action parameters are required.',
@@ -123,9 +150,11 @@ export default async function handler(req: any, res?: any) {
     }
 
     // 2. Fetch target order via universal lookup (supports UUID, order_number, payment gateway ID)
-    const cleanOrderId = String(orderId || '').trim();
+    const cleanOrderId = String(rawOrderId).trim();
     const isCleanUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanOrderId);
     let order: any = null;
+
+    console.log('[ADMIN APPROVAL] Order lookup started for:', cleanOrderId);
 
     // 2.1 UUID match
     if (isCleanUuid) {
@@ -183,7 +212,7 @@ export default async function handler(req: any, res?: any) {
       }
     }
 
-    console.log('[review-order] Order resolution result:', {
+    console.log('[ADMIN APPROVAL] Order found:', {
       requestedOrderId: cleanOrderId,
       matchedOrderNumber: order?.order_number,
       matchedOrderId: order?.id,
@@ -206,8 +235,11 @@ export default async function handler(req: any, res?: any) {
 
     // ACTION 1: APPROVE_PAYMENT
     if (action === 'APPROVE_PAYMENT') {
+      console.log('[ADMIN APPROVAL] Update started:', { targetStatus: 'PAID', action, orderNumber: order.order_number });
+
       // Idempotency: If already paid or delivered, return success immediately without duplicating
       if (order.status === 'PAID' || order.status === 'DELIVERED') {
+        console.log('[ADMIN APPROVAL] Order already approved idempotently:', order.order_number);
         return sendJsonResponse(res, 200, {
           success: true,
           message: `Order ${order.order_number} is already marked as ${order.status}.`,
@@ -245,7 +277,7 @@ export default async function handler(req: any, res?: any) {
         .single();
 
       if (updateErr) {
-        console.error('[review-order] Order status update error:', updateErr);
+        console.error('[ADMIN APPROVAL] Order status update error:', updateErr);
         throw updateErr;
       }
 
@@ -297,7 +329,7 @@ export default async function handler(req: any, res?: any) {
         },
       });
 
-      console.log('[review-order] Payment approved successfully for order:', {
+      console.log('[ADMIN APPROVAL] Update succeeded for order:', {
         orderId: order.id,
         orderNumber: order.order_number,
         newStatus: 'PAID',
@@ -326,9 +358,9 @@ export default async function handler(req: any, res?: any) {
           status: 'REJECTED',
           payment_rejection_reason: rejectionReason,
           rejected_at: nowIso,
-          rejected_by: adminUserId,
+          rejected_by: validAdminUserId,
           payment_reviewed_at: nowIso,
-          payment_reviewed_by: adminUserId,
+          payment_reviewed_by: validAdminUserId,
           updated_at: nowIso,
         })
         .eq('id', order.id)
@@ -352,7 +384,7 @@ export default async function handler(req: any, res?: any) {
 
       await adminClient.from('store_order_audit_logs').insert({
         order_id: order.id,
-        admin_user_id: adminUserId,
+        admin_user_id: validAdminUserId,
         admin_email: adminEmail,
         action: 'PAYMENT_REJECTED',
         previous_status: prevStatus,
@@ -381,7 +413,7 @@ export default async function handler(req: any, res?: any) {
           status: order.status === 'PAID' ? 'DELIVERED' : order.status,
           fulfillment_status: 'DELIVERED',
           delivered_at: nowIso,
-          delivered_by: adminUserId,
+          delivered_by: validAdminUserId,
           delivery_notes: notes || order.delivery_notes || null,
           updated_at: nowIso,
         })
@@ -393,7 +425,7 @@ export default async function handler(req: any, res?: any) {
 
       await adminClient.from('store_order_audit_logs').insert({
         order_id: order.id,
-        admin_user_id: adminUserId,
+        admin_user_id: validAdminUserId,
         admin_email: adminEmail,
         action: 'ORDER_DELIVERED',
         previous_status: prevFulfillment,
@@ -428,7 +460,7 @@ export default async function handler(req: any, res?: any) {
 
       await adminClient.from('store_order_audit_logs').insert({
         order_id: order.id,
-        admin_user_id: adminUserId,
+        admin_user_id: validAdminUserId,
         admin_email: adminEmail,
         action: 'DELIVERY_SENT_WHATSAPP',
         previous_status: prevStatus,
@@ -464,7 +496,7 @@ export default async function handler(req: any, res?: any) {
 
       await adminClient.from('store_order_audit_logs').insert({
         order_id: order.id,
-        admin_user_id: adminUserId,
+        admin_user_id: validAdminUserId,
         admin_email: adminEmail,
         action: 'ADMIN_NOTE_ADDED',
         previous_status: prevStatus,
@@ -487,10 +519,11 @@ export default async function handler(req: any, res?: any) {
       error: `Unknown review action: ${action}`,
     });
   } catch (err: any) {
-    console.error('review-order endpoint error:', err);
+    console.error('[ADMIN APPROVAL] Server error:', err);
     return sendJsonResponse(res, 500, {
       success: false,
-      error: err.message || 'Internal Server Error',
+      error: err?.message || 'Internal Server Error in review-order handler',
+      details: process.env.NODE_ENV === 'development' ? err?.stack : undefined,
     });
   }
 }

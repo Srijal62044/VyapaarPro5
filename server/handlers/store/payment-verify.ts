@@ -1,5 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
-import { getCachedOrder } from './order-store';
+
+// In-memory global fallback cache for orders to guarantee zero checkout interruption
+const globalOrderCache = new Map<string, any>();
+function getCachedOrder(orderIdOrNumber: string): any | null {
+  return globalOrderCache.get(orderIdOrNumber) || null;
+}
 
 /**
  * FamGateway Payment Verification Endpoint

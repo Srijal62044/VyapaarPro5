@@ -10,8 +10,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Import API handlers
-import createOrderHandler from './server/handlers/store/create-order.ts';
-import paymentCreateHandler from './server/handlers/store/payment-create.ts';
+import createOrderHandler from './api/store/create-order.ts';
+import paymentCreateHandler from './api/store/payment/create.ts';
 import paymentVerifyHandler from './server/handlers/store/payment-verify.ts';
 import downloadHandler from './server/handlers/store/download.ts';
 import reviewOrderHandler from './server/handlers/store/review-order.ts';
