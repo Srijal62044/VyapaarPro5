@@ -12,9 +12,11 @@ const __dirname = path.dirname(__filename);
 // Import API handlers
 import createOrderHandler from './api/store/create-order.ts';
 import paymentCreateHandler from './api/store/payment/create.ts';
-import paymentVerifyHandler from './server/handlers/store/payment-verify.ts';
-import downloadHandler from './server/handlers/store/download.ts';
-import reviewOrderHandler from './server/handlers/store/review-order.ts';
+import {
+  paymentVerifyHandler,
+  downloadHandler,
+  reviewOrderHandler,
+} from './api/store/[...route].ts';
 import webhookHandler from './api/famgateway-webhook.ts';
 import contactHandler from './api/contact.ts';
 import serviceRequestHandler from './api/service-request.ts';
