@@ -270,6 +270,59 @@ export interface StoreCategory {
 
 export type StoreProductStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
+export type CatalogCategoryType = 'DIGITAL_PRODUCT' | 'SOCIAL_SERVICE';
+
+export function isDigitalProduct(p: StoreProduct | Partial<StoreProduct>): boolean {
+  if (!p) return false;
+  const plat = (p.platform || '').toLowerCase().trim();
+  const catId = (p.category_id || '').toLowerCase().trim();
+  const catName = (p.category_name || '').toLowerCase().trim();
+  const slug = (p.slug || '').toLowerCase().trim();
+
+  // Explicit social media platforms exclusion list
+  const socialPlatforms = [
+    'instagram',
+    'youtube',
+    'facebook',
+    'twitter',
+    'x',
+    'telegram',
+    'tiktok',
+    'threads',
+    'snapchat',
+    'pinterest',
+    'linkedin',
+    'discord',
+    'spotify',
+  ];
+
+  if (plat && socialPlatforms.includes(plat)) {
+    return false;
+  }
+  if (catId.startsWith('cat-') && catId !== 'cat-digital') {
+    return false;
+  }
+
+  return (
+    plat === 'digital' ||
+    plat === 'software' ||
+    plat === 'boilerplate' ||
+    plat === 'code' ||
+    catId === 'cat-digital' ||
+    catId === 'digital-products' ||
+    catName.includes('digital') ||
+    catName.includes('software') ||
+    catName.includes('code') ||
+    slug === 'nextjs-saas-starter' ||
+    Boolean(p.product_file_path || p.file_name)
+  );
+}
+
+export function isSocialService(p: StoreProduct | Partial<StoreProduct>): boolean {
+  if (!p) return false;
+  return !isDigitalProduct(p);
+}
+
 export interface StoreProduct {
   id: string;
   category_id?: string | null;
@@ -460,6 +513,10 @@ export interface StoreDashboardStats {
   total_products: number;
   published_products: number;
   draft_products: number;
+  social_services_count?: number;
+  digital_products_count?: number;
+  active_social_services?: number;
+  active_digital_products?: number;
   total_orders: number;
   paid_orders: number;
   pending_payments: number;

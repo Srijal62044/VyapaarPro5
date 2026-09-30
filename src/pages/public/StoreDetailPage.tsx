@@ -15,7 +15,7 @@ import {
   Layers,
   HelpCircle,
 } from 'lucide-react';
-import { StoreProduct } from '../../types';
+import { StoreProduct, isSocialService } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { StoreCheckoutModal } from '../../components/store/StoreCheckoutModal';
 import { SEO } from '../../components/common/SEO';
@@ -47,10 +47,12 @@ export const StoreDetailPage: React.FC = () => {
     loadProduct();
   }, [slug]);
 
+  const isSocial = product ? isSocialService(product) : false;
+
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: product?.name || 'VyapaarPro Digital Product',
+        title: product?.name || (isSocial ? 'VyapaarPro Social Service' : 'VyapaarPro Digital Product'),
         text: product?.short_description || '',
         url: window.location.href,
       }).catch(() => {});
@@ -65,7 +67,7 @@ export const StoreDetailPage: React.FC = () => {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
         <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-xs text-slate-400">Loading product information...</p>
+        <p className="text-xs text-slate-400">Loading catalog item information...</p>
       </div>
     );
   }
@@ -77,16 +79,16 @@ export const StoreDetailPage: React.FC = () => {
           <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto">
             <Download className="w-7 h-7" />
           </div>
-          <h2 className="text-xl font-bold text-white">Product Not Found</h2>
+          <h2 className="text-xl font-bold text-white">Item Not Found</h2>
           <p className="text-xs text-slate-400 leading-relaxed">
-            This digital product may have been archived or is no longer available in the store catalogue.
+            This item may have been archived or is no longer available in the store catalogue.
           </p>
           <Link
             to="/store"
             className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Back to Digital Store</span>
+            <span>Back to Store Catalogue</span>
           </Link>
         </div>
       </div>
@@ -103,13 +105,12 @@ export const StoreDetailPage: React.FC = () => {
       ? Math.round(((compareRupees - priceRupees) / compareRupees) * 100)
       : null;
 
-  const isSocialService = Boolean(product.platform && product.platform !== 'digital');
-  const effectiveFields = isSocialService ? getEffectiveServiceFields(product) : [];
+  const effectiveFields = isSocial ? getEffectiveServiceFields(product) : [];
 
   return (
     <div className="min-h-screen py-8 lg:py-12">
       <SEO
-        title={`${product.name} | VyapaarPro Digital Store`}
+        title={`${product.name} | ${isSocial ? 'VyapaarPro Social Services' : 'VyapaarPro Digital Store'}`}
         description={product.short_description}
         ogImage={product.thumbnail_url || undefined}
       />
@@ -117,15 +118,22 @@ export const StoreDetailPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Breadcrumb Navigation */}
         <div className="flex items-center space-x-2 text-xs text-slate-400 mb-8">
-          <Link to="/store" className="hover:text-white transition flex items-center space-x-1">
+          <Link
+            to={isSocial ? '/store?type=social' : '/store?type=digital'}
+            className="hover:text-white transition flex items-center space-x-1"
+          >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Store</span>
+            <span>{isSocial ? 'Social Media Services' : 'Digital Products'}</span>
           </Link>
           <span>/</span>
           {product.category_name && (
             <>
               <Link
-                to={`/store?category=${product.category_id}`}
+                to={
+                  isSocial
+                    ? `/store?type=social&platform=${product.platform || ''}`
+                    : `/store?type=digital`
+                }
                 className="hover:text-white transition"
               >
                 {product.category_name}
@@ -239,7 +247,7 @@ export const StoreDetailPage: React.FC = () => {
               </div>
 
               {/* Dynamic Order Fields Preview if Social Service */}
-              {isSocialService && effectiveFields.length > 0 && (
+              {isSocial && effectiveFields.length > 0 && (
                 <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">
@@ -269,7 +277,7 @@ export const StoreDetailPage: React.FC = () => {
                   className="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 transition transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 cursor-pointer"
                 >
                   <ShoppingBag className="w-5 h-5" />
-                  <span>{isSocialService ? 'Order Now • Configure Details' : 'Buy Now • Instant Download'}</span>
+                  <span>{isSocial ? 'Order Now • Configure Details' : 'Buy Now • Instant Download'}</span>
                 </button>
 
                 <button
@@ -277,7 +285,7 @@ export const StoreDetailPage: React.FC = () => {
                   className="w-full py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-300 text-xs font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5" />
-                  <span>{isCopied ? 'Link Copied!' : isSocialService ? 'Share Service' : 'Share Digital Product'}</span>
+                  <span>{isCopied ? 'Link Copied!' : isSocial ? 'Share Service' : 'Share Digital Product'}</span>
                 </button>
               </div>
 

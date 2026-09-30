@@ -32,6 +32,7 @@ import {
   StoreCategory,
   SocialServiceFieldConfig,
   SocialFieldType,
+  isSocialService,
 } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
 import { getDefaultFieldsForService } from '../../services/socialServiceFields';
@@ -61,7 +62,6 @@ const PLATFORMS: PlatformOption[] = [
   { id: 'linkedin', name: 'LinkedIn', color: 'text-blue-400', badgeBg: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
   { id: 'discord', name: 'Discord', color: 'text-indigo-400', badgeBg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
   { id: 'spotify', name: 'Spotify', color: 'text-emerald-400', badgeBg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-  { id: 'digital', name: 'Digital / Code', color: 'text-purple-400', badgeBg: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
 ];
 
 export const AdminStoreSocialServicesPage: React.FC = () => {
@@ -87,13 +87,13 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
     setIsLoading(true);
     try {
       const [prods, cats] = await Promise.all([
-        storeDataService.getProducts({ includeAllStatuses: true }),
-        storeDataService.getCategories(false),
+        storeDataService.getSocialServices({ includeAllStatuses: true }),
+        storeDataService.getCategories(false, 'SOCIAL_SERVICE'),
       ]);
       setServices(prods);
       setCategories(cats);
     } catch (err) {
-      console.error('Failed to load services:', err);
+      console.error('Failed to load social services:', err);
     } finally {
       setIsLoading(false);
     }
@@ -346,6 +346,9 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
 
   // Filtered services
   const filteredServices = services.filter((s) => {
+    // Strictly ensure only social services are evaluated
+    if (!isSocialService(s)) return false;
+
     if (selectedPlatform !== 'all') {
       const target = selectedPlatform.toLowerCase().replace(/^cat-/, '');
       const plat = (s.platform || '').toLowerCase();
@@ -357,7 +360,6 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
         plat === target ||
         (target === 'twitter' && (plat === 'x' || plat === 'twitter')) ||
         (target === 'x' && (plat === 'x' || plat === 'twitter')) ||
-        (target === 'digital' && (!s.platform || plat === 'digital' || plat === 'boilerplate')) ||
         cat === target ||
         catName.includes(target) ||
         slug.startsWith(target) ||
@@ -383,7 +385,7 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
 
   const activeCount = services.filter((s) => s.status === 'PUBLISHED').length;
   const draftCount = services.filter((s) => s.status !== 'PUBLISHED').length;
-  const platformsCount = new Set(services.map((s) => s.platform || 'digital')).size;
+  const platformsCount = new Set(services.map((s) => s.platform).filter(Boolean)).size;
 
   return (
     <div className="space-y-6">

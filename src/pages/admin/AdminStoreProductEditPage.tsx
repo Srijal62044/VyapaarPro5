@@ -60,7 +60,7 @@ export const AdminStoreProductEditPage: React.FC = () => {
   useEffect(() => {
     async function loadInit() {
       try {
-        const cats = await storeDataService.getCategories(false);
+        const cats = await storeDataService.getCategories(false, 'DIGITAL_PRODUCT');
         setCategories(cats);
         if (cats.length > 0 && !categoryId) {
           setCategoryId(cats[0].id);
@@ -184,7 +184,8 @@ export const AdminStoreProductEditPage: React.FC = () => {
 
     try {
       const payload = {
-        category_id: categoryId || null,
+        category_id: categoryId || 'cat-digital',
+        platform: 'digital',
         name: name.trim(),
         slug: slug.toLowerCase().trim(),
         short_description: shortDescription.trim(),

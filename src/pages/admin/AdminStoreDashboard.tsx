@@ -99,7 +99,7 @@ export const AdminStoreDashboard: React.FC = () => {
       </div>
 
       {/* Metrics Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Total Revenue */}
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-emerald-400 mb-2">
@@ -120,10 +120,36 @@ export const AdminStoreDashboard: React.FC = () => {
           <span className="text-[10px] text-slate-500 mt-1 block">Total Orders: {stats?.total_orders ?? 0}</span>
         </div>
 
+        {/* Social Media Services */}
+        <Link
+          to="/admin/store/social-services"
+          className="bg-slate-900 border border-slate-800 hover:border-pink-500/50 p-5 rounded-2xl transition group"
+        >
+          <div className="flex items-center justify-between text-pink-400 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Social Services</span>
+            <Share2 className="w-4 h-4" />
+          </div>
+          <p className="text-2xl font-black text-white">{stats?.social_services_count ?? 30}</p>
+          <span className="text-[10px] text-pink-400/80 mt-1 block">12 Platforms Active →</span>
+        </Link>
+
+        {/* Digital Products */}
+        <Link
+          to="/admin/store/products"
+          className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 p-5 rounded-2xl transition group"
+        >
+          <div className="flex items-center justify-between text-purple-400 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Digital Products</span>
+            <Package className="w-4 h-4" />
+          </div>
+          <p className="text-2xl font-black text-white">{stats?.digital_products_count ?? 1}</p>
+          <span className="text-[10px] text-purple-400/80 mt-1 block">Code & Templates →</span>
+        </Link>
+
         {/* Pending Reviews */}
         <Link
           to="/admin/store/reviews"
-          className="bg-slate-900 border border-amber-500/30 hover:border-amber-500/60 p-5 rounded-2xl transition group"
+          className="bg-slate-900 border border-amber-500/30 hover:border-amber-500/60 p-5 rounded-2xl transition group col-span-2 lg:col-span-1"
         >
           <div className="flex items-center justify-between text-amber-400 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Payment Reviews</span>
@@ -132,16 +158,6 @@ export const AdminStoreDashboard: React.FC = () => {
           <p className="text-2xl font-black text-amber-400">{stats?.pending_reviews ?? 0}</p>
           <span className="text-[10px] text-amber-400/80 mt-1 block">Awaiting manual approval →</span>
         </Link>
-
-        {/* Published Products */}
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
-          <div className="flex items-center justify-between text-violet-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Products</span>
-            <Package className="w-4 h-4" />
-          </div>
-          <p className="text-2xl font-black text-white">{stats?.published_products ?? 0}</p>
-          <span className="text-[10px] text-slate-500 mt-1 block">Drafts: {stats?.draft_products ?? 0}</span>
-        </div>
       </div>
 
       {/* Quick Navigation Cards */}

@@ -7,6 +7,9 @@ import {
   StoreDownload,
   StoreDashboardStats,
   StoreProductStatus,
+  CatalogCategoryType,
+  isDigitalProduct,
+  isSocialService,
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { generateReferenceCode } from './store';
@@ -62,7 +65,10 @@ export const storeDataService = {
   // ============================================================================
   // 1. CATEGORIES
   // ============================================================================
-  async getCategories(onlyActive = true): Promise<StoreCategory[]> {
+  async getCategories(
+    onlyActive = true,
+    catalogType?: CatalogCategoryType | 'ALL'
+  ): Promise<StoreCategory[]> {
     let list: StoreCategory[] = [];
 
     if (isSupabaseConfigured && supabase) {
@@ -129,7 +135,19 @@ export const storeDataService = {
       }
     }
 
-    return onlyActive ? list.filter((c) => c.is_active) : list;
+    let filtered = onlyActive ? list.filter((c) => c.is_active) : list;
+
+    if (catalogType === 'SOCIAL_SERVICE') {
+      filtered = filtered.filter(
+        (c) => c.slug !== 'digital-products' && c.id !== 'cat-digital'
+      );
+    } else if (catalogType === 'DIGITAL_PRODUCT') {
+      filtered = filtered.filter(
+        (c) => c.slug === 'digital-products' || c.id === 'cat-digital'
+      );
+    }
+
+    return filtered;
   },
 
   async getCategoryById(id: string): Promise<StoreCategory | null> {
@@ -239,6 +257,7 @@ export const storeDataService = {
     featured?: boolean;
     search?: string;
     includeAllStatuses?: boolean;
+    catalogType?: CatalogCategoryType | 'ALL';
   }): Promise<StoreProduct[]> {
     let list: StoreProduct[] = [];
 
@@ -336,13 +355,21 @@ export const storeDataService = {
       }
     }
 
-    // Apply filtering on the complete guaranteed product catalog
+    // 1. Strict Category Isolation (Digital Products vs Social Media Services)
+    if (params?.catalogType === 'DIGITAL_PRODUCT') {
+      list = list.filter(isDigitalProduct);
+    } else if (params?.catalogType === 'SOCIAL_SERVICE') {
+      list = list.filter(isSocialService);
+    }
+
+    // 2. Status Filtering
     if (!params?.includeAllStatuses) {
       list = list.filter((p) => (p.status || 'PUBLISHED') === (params?.status || 'PUBLISHED'));
     } else if (params?.status) {
       list = list.filter((p) => (p.status || 'PUBLISHED') === params.status);
     }
 
+    // 3. Platform Filtering
     if (params?.platform && params.platform !== 'all') {
       const targetPlat = params.platform.toLowerCase().replace(/^cat-/, '');
       list = list.filter((p) => {
@@ -364,6 +391,7 @@ export const storeDataService = {
       });
     }
 
+    // 4. Category ID Filtering
     if (params?.categoryId && params.categoryId !== 'all') {
       const targetCat = params.categoryId.toLowerCase().replace(/^cat-/, '');
       list = list.filter((p) => {
@@ -391,6 +419,14 @@ export const storeDataService = {
     }
 
     return list;
+  },
+
+  async getDigitalProducts(params?: Omit<Parameters<typeof storeDataService.getProducts>[0], 'catalogType'>): Promise<StoreProduct[]> {
+    return this.getProducts({ ...params, catalogType: 'DIGITAL_PRODUCT' });
+  },
+
+  async getSocialServices(params?: Omit<Parameters<typeof storeDataService.getProducts>[0], 'catalogType'>): Promise<StoreProduct[]> {
+    return this.getProducts({ ...params, catalogType: 'SOCIAL_SERVICE' });
   },
 
   async getProductBySlug(slug: string): Promise<StoreProduct | null> {
@@ -933,11 +969,30 @@ export const storeDataService = {
         body: JSON.stringify(params),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Review action failed.');
+      const contentType = res.headers.get('content-type') || '';
+      const text = await res.text();
+
+      let data: any = null;
+
+      if (text.trim()) {
+        if (contentType.includes('application/json')) {
+          try {
+            data = JSON.parse(text);
+          } catch (parseErr: any) {
+            throw new Error(`Invalid JSON received from server: ${text.slice(0, 100)}`);
+          }
+        } else {
+          throw new Error(text || `Server returned non-JSON response with HTTP status ${res.status}`);
+        }
+      } else if (res.status === 204) {
+        data = { success: true, message: 'Action completed.' };
       }
-      return data;
+
+      if (!res.ok) {
+        throw new Error(data?.error || data?.message || `Payment review action failed with status ${res.status}`);
+      }
+
+      return data || { success: true, message: 'Payment review processed successfully.' };
     } catch (err: any) {
       console.error('storeDataService reviewOrder error:', err);
       return { success: false, error: err.message || 'Error processing review action.' };
@@ -998,10 +1053,17 @@ export const storeDataService = {
     const products = await this.getProducts({ includeAllStatuses: true });
     const orders = await this.getAdminOrders();
 
+    const socialServices = products.filter(isSocialService);
+    const digitalProducts = products.filter(isDigitalProduct);
+
     return {
       total_products: products.filter((p) => p.status !== 'ARCHIVED').length,
       published_products: products.filter((p) => p.status === 'PUBLISHED').length,
       draft_products: products.filter((p) => p.status === 'DRAFT').length,
+      social_services_count: socialServices.length,
+      digital_products_count: digitalProducts.length,
+      active_social_services: socialServices.filter((p) => p.status === 'PUBLISHED').length,
+      active_digital_products: digitalProducts.filter((p) => p.status === 'PUBLISHED').length,
       total_orders: orders.length,
       paid_orders: orders.filter((o) => o.status === 'PAID' || o.status === 'DELIVERED').length,
       pending_payments: orders.filter((o) => o.status === 'PAYMENT_PENDING' || o.status === 'CREATED').length,

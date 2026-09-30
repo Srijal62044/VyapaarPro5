@@ -201,6 +201,7 @@ export const AdminStoreCategoriesPage: React.FC = () => {
             <thead className="bg-slate-950/60 text-slate-400 border-b border-slate-800">
               <tr>
                 <th className="py-3 px-4 font-semibold">Category</th>
+                <th className="py-3 px-4 font-semibold">Type Scope</th>
                 <th className="py-3 px-4 font-semibold">Slug</th>
                 <th className="py-3 px-4 font-semibold">Sort Order</th>
                 <th className="py-3 px-4 font-semibold">Status</th>
@@ -208,28 +209,41 @@ export const AdminStoreCategoriesPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {categories.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-800/40 transition">
-                  <td className="py-3.5 px-4">
-                    <span className="font-bold text-white block">{c.name}</span>
-                    {c.description && (
-                      <span className="text-[11px] text-slate-400">{c.description}</span>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-4 font-mono text-slate-400">{c.slug}</td>
-                  <td className="py-3.5 px-4 text-slate-300">{c.sort_order}</td>
-                  <td className="py-3.5 px-4">
-                    <button
-                      onClick={() => handleToggleActive(c)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
-                        c.is_active
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-slate-800 text-slate-500 border border-slate-700'
-                      }`}
-                    >
-                      {c.is_active ? 'Active' : 'Disabled'}
-                    </button>
-                  </td>
+              {categories.map((c) => {
+                const isDigital = c.slug === 'digital-products' || c.id === 'cat-digital';
+                return (
+                  <tr key={c.id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-3.5 px-4">
+                      <span className="font-bold text-white block">{c.name}</span>
+                      {c.description && (
+                        <span className="text-[11px] text-slate-400">{c.description}</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {isDigital ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                          Digital Products
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-500/10 text-pink-300 border border-pink-500/20">
+                          Social Media Service
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 font-mono text-slate-400">{c.slug}</td>
+                    <td className="py-3.5 px-4 text-slate-300">{c.sort_order}</td>
+                    <td className="py-3.5 px-4">
+                      <button
+                        onClick={() => handleToggleActive(c)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                          c.is_active
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-slate-800 text-slate-500 border border-slate-700'
+                        }`}
+                      >
+                        {c.is_active ? 'Active' : 'Disabled'}
+                      </button>
+                    </td>
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end space-x-2">
                       <button
@@ -249,7 +263,8 @@ export const AdminStoreCategoriesPage: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
