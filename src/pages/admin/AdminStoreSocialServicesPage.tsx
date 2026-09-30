@@ -34,7 +34,7 @@ import {
   SocialFieldType,
   isSocialService,
 } from '../../types';
-import { storeDataService } from '../../services/storeDataService';
+import { storeDataService, isValidUUID } from '../../services/storeDataService';
 import { getDefaultFieldsForService } from '../../services/socialServiceFields';
 import { SEO } from '../../components/common/SEO';
 import { ServiceThumbnail } from '../../components/common/ServiceThumbnail';
@@ -194,16 +194,42 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
   const openEditModal = (service?: StoreProduct) => {
     if (service) {
       const defaultFields = getDefaultFieldsForService(service);
-      const fields = service.ordering_fields && service.ordering_fields.length > 0
-        ? [...service.ordering_fields]
-        : defaultFields;
+      const fields =
+        service.ordering_fields && service.ordering_fields.length > 0
+          ? [...service.ordering_fields]
+          : defaultFields;
+
+      // Find matching category from categories list
+      const matchedCat = categories.find(
+        (c) => c.id === service.category_id || c.slug === service.platform
+      );
+
       setModalService({
         ...service,
+        category_id: matchedCat?.id || (isValidUUID(service.category_id) ? service.category_id : null),
+        category_name: matchedCat?.name || service.category_name,
+        name: service.name || '',
+        slug: service.slug || '',
+        platform: service.platform || 'instagram',
+        service_type: service.service_type || '',
+        short_description: service.short_description || '',
+        description: service.description || service.short_description || '',
+        price_paise: service.price_paise !== undefined ? service.price_paise : 0,
+        compare_at_price_paise: service.compare_at_price_paise || null,
+        min_quantity: service.min_quantity !== undefined ? service.min_quantity : 100,
+        max_quantity: service.max_quantity !== undefined ? service.max_quantity : 10000,
+        delivery_time_info: service.delivery_time_info || '',
+        instructions: service.instructions || '',
+        access_info: service.access_info || '',
+        delivery_notes: service.delivery_notes || '',
         thumbnail_url: service.thumbnail_url || '',
         ordering_fields: fields,
+        status: service.status || 'PUBLISHED',
+        featured: Boolean(service.featured),
       });
     } else {
       const initialPlat = selectedPlatform !== 'all' ? selectedPlatform.replace(/^cat-/, '') : 'instagram';
+      const matchedCat = categories.find((c) => c.slug === initialPlat);
       const initialFields = getDefaultFieldsForService({
         platform: initialPlat,
         service_type: 'followers',
@@ -213,7 +239,8 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
         name: '',
         slug: '',
         platform: initialPlat,
-        category_id: `cat-${initialPlat}`,
+        category_id: matchedCat?.id || null,
+        category_name: matchedCat?.name,
         service_type: 'followers',
         short_description: '',
         description: '',
@@ -326,9 +353,9 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
         // Update existing
         const updated = await storeDataService.updateProduct(modalService.id, modalService);
         setServices((prev) =>
-          prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s))
+          prev.map((s) => (s.id === updated.id || s.slug === updated.slug ? { ...s, ...updated } : s))
         );
-        showFeedback('success', `Saved service "${updated.name}" with ${modalService.ordering_fields?.length || 0} ordering field(s)`);
+        showFeedback('success', `Saved service "${updated.name}" with ${updated.ordering_fields?.length || 0} ordering field(s)`);
       } else {
         // Create new
         const created = await storeDataService.createProduct(modalService as any);
@@ -768,10 +795,12 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
                     value={modalService.platform || 'instagram'}
                     onChange={(e) => {
                       const plat = e.target.value;
+                      const matchedCat = categories.find((c) => c.slug === plat);
                       setModalService({
                         ...modalService,
                         platform: plat,
-                        category_id: `cat-${plat}`,
+                        category_id: matchedCat?.id || null,
+                        category_name: matchedCat?.name,
                       });
                     }}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
@@ -946,6 +975,48 @@ export const AdminStoreSocialServicesPage: React.FC = () => {
                   placeholder="1. Provide your public profile link.\n2. Ensure account is set to PUBLIC."
                   className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
                 />
+              </div>
+
+              {/* Full Description */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Full Service Description
+                </label>
+                <textarea
+                  rows={3}
+                  value={modalService.description || ''}
+                  onChange={(e) => setModalService({ ...modalService, description: e.target.value })}
+                  placeholder="Comprehensive service details, feature highlights, and terms."
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              {/* Access Info & Delivery Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Access Info / Delivery Pacing
+                  </label>
+                  <input
+                    type="text"
+                    value={modalService.access_info || ''}
+                    onChange={(e) => setModalService({ ...modalService, access_info: e.target.value })}
+                    placeholder="e.g. Natural high-retention delivery pacing."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Delivery Notes / Guarantee Info
+                  </label>
+                  <input
+                    type="text"
+                    value={modalService.delivery_notes || ''}
+                    onChange={(e) => setModalService({ ...modalService, delivery_notes: e.target.value })}
+                    placeholder="e.g. 100% safe & password-free."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
+                  />
+                </div>
               </div>
 
               {/* 3. DYNAMIC ORDERING FIELDS CONFIGURATION BUILDER */}

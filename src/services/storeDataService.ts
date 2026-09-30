@@ -8,13 +8,87 @@ import {
   StoreDashboardStats,
   StoreProductStatus,
   CatalogCategoryType,
+  SocialServiceFieldConfig,
   isDigitalProduct,
   isSocialService,
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { generateReferenceCode } from './store';
 import { INITIAL_STORE_CATEGORIES, INITIAL_STORE_PRODUCTS } from './storeSeedData';
-import { calculateServicePrice } from './socialServiceFields';
+import { calculateServicePrice, getDefaultFieldsForService } from './socialServiceFields';
+
+export const AUTHORIZED_ADMIN_EMAIL = 'kumarsrijal732@gmail.com';
+
+export function checkIsAdminUser(): boolean {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem('vp_current_user_v1');
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (
+          user &&
+          (user.role === 'admin' ||
+            user.role === 'super_admin' ||
+            user.email?.toLowerCase().trim() === AUTHORIZED_ADMIN_EMAIL)
+        ) {
+          return true;
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return false;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function isValidUUID(val?: string | null): boolean {
+  if (!val || typeof val !== 'string') return false;
+  return UUID_REGEX.test(val.trim());
+}
+
+/**
+ * Safely packs custom ordering fields into access_info metadata
+ * to guarantee field persistence in Supabase without modifying schema.
+ */
+function packOrderingFields(
+  accessInfo?: string | null,
+  orderingFields?: SocialServiceFieldConfig[] | null
+): string | null {
+  const clean = (accessInfo || '').replace(/<!--ORDERING_FIELDS:[\s\S]*?-->/, '').trim();
+  if (orderingFields && Array.isArray(orderingFields) && orderingFields.length > 0) {
+    return `<!--ORDERING_FIELDS:${JSON.stringify(orderingFields)}-->${clean ? '\n' + clean : ''}`;
+  }
+  return clean || null;
+}
+
+/**
+ * Unpacks any embedded ordering fields from access_info metadata.
+ */
+function unpackOrderingFields(rawAccessInfo?: string | null): {
+  cleanAccessInfo: string | null;
+  orderingFields: SocialServiceFieldConfig[] | null;
+} {
+  if (!rawAccessInfo || typeof rawAccessInfo !== 'string') {
+    return { cleanAccessInfo: null, orderingFields: null };
+  }
+
+  const match = rawAccessInfo.match(/<!--ORDERING_FIELDS:([\s\S]*?)-->/);
+  if (!match) {
+    return { cleanAccessInfo: rawAccessInfo, orderingFields: null };
+  }
+
+  try {
+    const parsed = JSON.parse(match[1]);
+    const clean = rawAccessInfo.replace(/<!--ORDERING_FIELDS:[\s\S]*?-->/, '').trim();
+    return {
+      cleanAccessInfo: clean || null,
+      orderingFields: Array.isArray(parsed) ? parsed : null,
+    };
+  } catch {
+    return { cleanAccessInfo: rawAccessInfo, orderingFields: null };
+  }
+}
 
 // Storage keys for offline / preview mode fallback (Contains ZERO fake records by default)
 const STORE_STORAGE_KEYS = {
@@ -270,15 +344,20 @@ export const storeDataService = {
           .order('created_at', { ascending: false });
 
         if (!error && data) {
-          list = data.map((item: any) => ({
-            ...item,
-            category_name: item.store_categories?.name || undefined,
-            thumbnail_url: item.thumbnail_url || (item.thumbnail_path
-              ? item.thumbnail_path.startsWith('http')
-                ? item.thumbnail_path
-                : supabase?.storage.from('store-thumbnails').getPublicUrl(item.thumbnail_path).data.publicUrl
-              : null),
-          })) as StoreProduct[];
+          list = data.map((item: any) => {
+            const { cleanAccessInfo, orderingFields } = unpackOrderingFields(item.access_info);
+            return {
+              ...item,
+              access_info: cleanAccessInfo,
+              ordering_fields: orderingFields && orderingFields.length > 0 ? orderingFields : getDefaultFieldsForService(item),
+              category_name: item.store_categories?.name || undefined,
+              thumbnail_url: item.thumbnail_url || (item.thumbnail_path
+                ? item.thumbnail_path.startsWith('http')
+                  ? item.thumbnail_path
+                  : supabase?.storage.from('store-thumbnails').getPublicUrl(item.thumbnail_path).data.publicUrl
+                : null),
+            };
+          }) as StoreProduct[];
         }
       } catch (err) {
         console.warn('Supabase getProducts error:', err);
@@ -310,9 +389,40 @@ export const storeDataService = {
       } else {
         // Hydrate missing properties on existing items (e.g. platform, min_quantity, ordering_fields, status)
         const current = list[existingIdx];
+        const localMatch = localList.find((p) => p.id === current.id || p.slug === current.slug);
         list[existingIdx] = {
           ...initProd,
           ...current,
+          ...(localMatch
+            ? {
+                name: localMatch.name || current.name,
+                price_paise: localMatch.price_paise !== undefined ? localMatch.price_paise : current.price_paise,
+                compare_at_price_paise:
+                  localMatch.compare_at_price_paise !== undefined
+                    ? localMatch.compare_at_price_paise
+                    : current.compare_at_price_paise,
+                delivery_time_info:
+                  localMatch.delivery_time_info !== undefined
+                    ? localMatch.delivery_time_info
+                    : current.delivery_time_info,
+                instructions:
+                  localMatch.instructions !== undefined ? localMatch.instructions : current.instructions,
+                access_info:
+                  localMatch.access_info !== undefined ? localMatch.access_info : current.access_info,
+                delivery_notes:
+                  localMatch.delivery_notes !== undefined ? localMatch.delivery_notes : current.delivery_notes,
+                short_description: localMatch.short_description || current.short_description,
+                description: localMatch.description || current.description,
+                status: localMatch.status || current.status,
+                featured: localMatch.featured !== undefined ? localMatch.featured : current.featured,
+                thumbnail_url:
+                  localMatch.thumbnail_url !== undefined ? localMatch.thumbnail_url : current.thumbnail_url,
+                ordering_fields:
+                  localMatch.ordering_fields && localMatch.ordering_fields.length > 0
+                    ? localMatch.ordering_fields
+                    : current.ordering_fields,
+              }
+            : {}),
           platform: current.platform || initProd.platform,
           service_type: current.service_type || initProd.service_type,
           min_quantity: current.min_quantity || initProd.min_quantity,
@@ -439,8 +549,11 @@ export const storeDataService = {
           .single();
 
         if (!error && data) {
+          const { cleanAccessInfo, orderingFields } = unpackOrderingFields(data.access_info);
           return {
             ...data,
+            access_info: cleanAccessInfo,
+            ordering_fields: orderingFields && orderingFields.length > 0 ? orderingFields : getDefaultFieldsForService(data),
             category_name: data.store_categories?.name || undefined,
             thumbnail_url: data.thumbnail_url || (data.thumbnail_path
               ? data.thumbnail_path.startsWith('http')
@@ -461,15 +574,24 @@ export const storeDataService = {
   async getProductById(id: string): Promise<StoreProduct | null> {
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('store_products')
-          .select('*, store_categories(name)')
-          .eq('id', id)
-          .single();
+          .select('*, store_categories(name)');
+
+        if (isValidUUID(id)) {
+          query = query.eq('id', id);
+        } else {
+          query = query.eq('slug', id);
+        }
+
+        const { data, error } = await query.single();
 
         if (!error && data) {
+          const { cleanAccessInfo, orderingFields } = unpackOrderingFields(data.access_info);
           return {
             ...data,
+            access_info: cleanAccessInfo,
+            ordering_fields: orderingFields && orderingFields.length > 0 ? orderingFields : getDefaultFieldsForService(data),
             category_name: data.store_categories?.name || undefined,
             thumbnail_url: data.thumbnail_url || (data.thumbnail_path
               ? data.thumbnail_path.startsWith('http')
@@ -488,108 +610,349 @@ export const storeDataService = {
   },
 
   async createProduct(productData: Omit<StoreProduct, 'id' | 'created_at' | 'updated_at'>): Promise<StoreProduct> {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('store_products')
-        .insert({
-          category_id: productData.category_id || null,
-          name: productData.name.trim(),
-          slug: productData.slug.toLowerCase().trim(),
-          short_description: productData.short_description.trim(),
-          description: productData.description.trim(),
-          price_paise: productData.price_paise,
-          compare_at_price_paise: productData.compare_at_price_paise || null,
-          thumbnail_url: productData.thumbnail_url?.trim() || null,
-          thumbnail_path: productData.thumbnail_url?.trim() || productData.thumbnail_path || null,
-          product_file_path: productData.product_file_path || null,
-          file_name: productData.file_name || null,
-          file_size_bytes: productData.file_size_bytes || null,
-          mime_type: productData.mime_type || null,
-          access_link: productData.access_link?.trim() || null,
-          instructions: productData.instructions?.trim() || null,
-          access_info: productData.access_info?.trim() || null,
-          license_key: productData.license_key?.trim() || null,
-          delivery_notes: productData.delivery_notes?.trim() || null,
-          platform: productData.platform?.trim() || null,
-          service_type: productData.service_type?.trim() || null,
-          min_quantity: productData.min_quantity || null,
-          max_quantity: productData.max_quantity || null,
-          delivery_time_info: productData.delivery_time_info?.trim() || null,
-          sort_order: productData.sort_order || 0,
-          status: productData.status,
-          featured: productData.featured || false,
-        })
-        .select()
-        .single();
+    if (!checkIsAdminUser()) {
+      if (isSupabaseConfigured && supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const email = session?.user?.email?.toLowerCase().trim();
+        if (!email || email !== AUTHORIZED_ADMIN_EMAIL) {
+          throw new Error('Access Denied: Administrator permissions required.');
+        }
+      } else {
+        throw new Error('Access Denied: Administrator permissions required.');
+      }
+    }
 
-      if (error) throw error;
-      return data as StoreProduct;
+    let resolvedCategoryId: string | null = null;
+    if (isValidUUID(productData.category_id)) {
+      resolvedCategoryId = productData.category_id;
+    } else if (typeof productData.category_id === 'string' && productData.category_id.trim()) {
+      const slug = productData.category_id.replace(/^cat-/, '').trim();
+      const categories = await this.getCategories(false);
+      const match = categories.find((c) => c.slug === slug && isValidUUID(c.id));
+      resolvedCategoryId = match ? match.id : null;
+    }
+
+    const packedAccessInfo = packOrderingFields(
+      productData.access_info,
+      productData.ordering_fields
+    );
+
+    const allowedColumns: Record<string, any> = {
+      category_id: resolvedCategoryId,
+      name: productData.name.trim(),
+      slug: productData.slug.toLowerCase().trim(),
+      short_description: productData.short_description.trim(),
+      description: productData.description.trim(),
+      price_paise: Number(productData.price_paise),
+      compare_at_price_paise:
+        productData.compare_at_price_paise !== undefined && productData.compare_at_price_paise !== null
+          ? Number(productData.compare_at_price_paise)
+          : null,
+      thumbnail_url: productData.thumbnail_url?.trim() || null,
+      thumbnail_path: productData.thumbnail_url?.trim() || productData.thumbnail_path || null,
+      product_file_path: productData.product_file_path || null,
+      file_name: productData.file_name || null,
+      file_size_bytes: productData.file_size_bytes !== undefined && productData.file_size_bytes !== null ? Number(productData.file_size_bytes) : null,
+      mime_type: productData.mime_type || null,
+      access_link: productData.access_link?.trim() || null,
+      instructions: productData.instructions?.trim() || null,
+      access_info: packedAccessInfo,
+      license_key: productData.license_key?.trim() || null,
+      delivery_notes: productData.delivery_notes?.trim() || null,
+      platform: productData.platform?.trim() || null,
+      service_type: productData.service_type?.trim() || null,
+      min_quantity: productData.min_quantity !== undefined && productData.min_quantity !== null ? Number(productData.min_quantity) : null,
+      max_quantity: productData.max_quantity !== undefined && productData.max_quantity !== null ? Number(productData.max_quantity) : null,
+      delivery_time_info: productData.delivery_time_info?.trim() || null,
+      sort_order: productData.sort_order !== undefined && productData.sort_order !== null ? Number(productData.sort_order) : 0,
+      status: productData.status || 'PUBLISHED',
+      featured: Boolean(productData.featured),
+    };
+
+    let createdProduct: StoreProduct | null = null;
+
+    if (isSupabaseConfigured && supabase) {
+      let hasSupabaseSession = false;
+      try {
+        const sessionRes = await supabase.auth.getSession();
+        hasSupabaseSession = Boolean(sessionRes?.data?.session);
+      } catch (e) {
+        // ignore
+      }
+
+      if (hasSupabaseSession) {
+        const { data, error } = await supabase
+          .from('store_products')
+          .insert(allowedColumns)
+          .select('*, store_categories(name)')
+          .single();
+
+        if (error) {
+          console.error('Supabase createProduct error:', error);
+          throw new Error(error.message || 'Failed to create product in database.');
+        }
+
+        const { cleanAccessInfo, orderingFields } = unpackOrderingFields(data.access_info);
+        createdProduct = {
+          ...data,
+          access_info: cleanAccessInfo,
+          ordering_fields: orderingFields && orderingFields.length > 0 ? orderingFields : (productData.ordering_fields || []),
+          category_name: data.store_categories?.name || undefined,
+          thumbnail_url: data.thumbnail_url || (data.thumbnail_path
+            ? data.thumbnail_path.startsWith('http')
+              ? data.thumbnail_path
+              : supabase?.storage.from('store-thumbnails').getPublicUrl(data.thumbnail_path).data.publicUrl
+            : null),
+        } as StoreProduct;
+      }
+    }
+
+    if (!createdProduct) {
+      createdProduct = {
+        id: `sp-${Date.now()}`,
+        ...productData,
+        category_id: resolvedCategoryId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
     }
 
     const products = await this.getProducts({ includeAllStatuses: true });
-    const newProduct: StoreProduct = {
-      id: `sp-${Date.now()}`,
-      ...productData,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    products.unshift(newProduct);
+    products.unshift(createdProduct);
     safeStoreSet(STORE_STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-    return newProduct;
+    return createdProduct;
   },
 
   async updateProduct(id: string, updates: Partial<StoreProduct>): Promise<StoreProduct> {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('store_products')
-        .update({
-          ...updates,
-          thumbnail_url: updates.thumbnail_url !== undefined ? (updates.thumbnail_url?.trim() || null) : undefined,
-          thumbnail_path: updates.thumbnail_url !== undefined ? (updates.thumbnail_url?.trim() || null) : updates.thumbnail_path,
-          access_link: updates.access_link !== undefined ? (updates.access_link?.trim() || null) : undefined,
-          instructions: updates.instructions !== undefined ? (updates.instructions?.trim() || null) : undefined,
-          access_info: updates.access_info !== undefined ? (updates.access_info?.trim() || null) : undefined,
-          license_key: updates.license_key !== undefined ? (updates.license_key?.trim() || null) : undefined,
-          delivery_notes: updates.delivery_notes !== undefined ? (updates.delivery_notes?.trim() || null) : undefined,
-          platform: updates.platform !== undefined ? (updates.platform?.trim() || null) : undefined,
-          service_type: updates.service_type !== undefined ? (updates.service_type?.trim() || null) : undefined,
-          min_quantity: updates.min_quantity !== undefined ? updates.min_quantity : undefined,
-          max_quantity: updates.max_quantity !== undefined ? updates.max_quantity : undefined,
-          delivery_time_info: updates.delivery_time_info !== undefined ? (updates.delivery_time_info?.trim() || null) : undefined,
-          sort_order: updates.sort_order !== undefined ? updates.sort_order : undefined,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data as StoreProduct;
+    if (!id || typeof id !== 'string') {
+      throw new Error('Service ID is required for update.');
     }
 
-    const products = await this.getProducts({ includeAllStatuses: true });
-    const idx = products.findIndex((p) => p.id === id || p.slug === id);
-    if (idx === -1) throw new Error('Product not found');
+    // Verify admin authorization
+    if (!checkIsAdminUser()) {
+      if (isSupabaseConfigured && supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const email = session?.user?.email?.toLowerCase().trim();
+        if (!email || email !== AUTHORIZED_ADMIN_EMAIL) {
+          throw new Error('Access Denied: Administrator permissions required.');
+        }
+      } else {
+        throw new Error('Access Denied: Administrator permissions required.');
+      }
+    }
 
-    const updated = {
-      ...products[idx],
-      ...updates,
-      updated_at: new Date().toISOString(),
-    };
-    products[idx] = updated;
+    // Resolve category_id safely
+    let resolvedCategoryId: string | null | undefined = undefined;
+    if (updates.category_id !== undefined) {
+      if (isValidUUID(updates.category_id)) {
+        resolvedCategoryId = updates.category_id;
+      } else if (typeof updates.category_id === 'string' && updates.category_id.trim()) {
+        const slug = updates.category_id.replace(/^cat-/, '').trim();
+        const categories = await this.getCategories(false);
+        const match = categories.find((c) => c.slug === slug && isValidUUID(c.id));
+        resolvedCategoryId = match ? match.id : null;
+      } else {
+        resolvedCategoryId = null;
+      }
+    }
+
+    // Pack custom ordering fields into access_info metadata if provided
+    let packedAccessInfo: string | null | undefined = undefined;
+    if (updates.ordering_fields !== undefined) {
+      packedAccessInfo = packOrderingFields(updates.access_info, updates.ordering_fields);
+    } else if (updates.access_info !== undefined) {
+      packedAccessInfo = updates.access_info?.trim() || null;
+    }
+
+    // Whitelist ONLY actual columns that exist in the public.store_products PostgreSQL schema
+    const allowedColumns: Record<string, any> = {};
+
+    if (updates.name !== undefined) allowedColumns.name = updates.name.trim();
+    if (updates.slug !== undefined) allowedColumns.slug = updates.slug.toLowerCase().trim();
+    if (updates.short_description !== undefined) allowedColumns.short_description = updates.short_description.trim();
+    if (updates.description !== undefined) allowedColumns.description = updates.description.trim();
+    if (updates.price_paise !== undefined) allowedColumns.price_paise = Number(updates.price_paise);
+    if (updates.compare_at_price_paise !== undefined) {
+      allowedColumns.compare_at_price_paise =
+        updates.compare_at_price_paise !== null && !isNaN(Number(updates.compare_at_price_paise))
+          ? Number(updates.compare_at_price_paise)
+          : null;
+    }
+    if (resolvedCategoryId !== undefined) allowedColumns.category_id = resolvedCategoryId;
+    if (updates.thumbnail_url !== undefined) allowedColumns.thumbnail_url = updates.thumbnail_url?.trim() || null;
+    if (updates.thumbnail_path !== undefined) allowedColumns.thumbnail_path = updates.thumbnail_path?.trim() || allowedColumns.thumbnail_url || null;
+    if (updates.product_file_path !== undefined) allowedColumns.product_file_path = updates.product_file_path || null;
+    if (updates.file_name !== undefined) allowedColumns.file_name = updates.file_name || null;
+    if (updates.file_size_bytes !== undefined) {
+      allowedColumns.file_size_bytes =
+        updates.file_size_bytes !== null && !isNaN(Number(updates.file_size_bytes))
+          ? Number(updates.file_size_bytes)
+          : null;
+    }
+    if (updates.mime_type !== undefined) allowedColumns.mime_type = updates.mime_type || null;
+    if (updates.access_link !== undefined) allowedColumns.access_link = updates.access_link?.trim() || null;
+    if (updates.instructions !== undefined) allowedColumns.instructions = updates.instructions?.trim() || null;
+    if (packedAccessInfo !== undefined) allowedColumns.access_info = packedAccessInfo;
+    if (updates.license_key !== undefined) allowedColumns.license_key = updates.license_key?.trim() || null;
+    if (updates.delivery_notes !== undefined) allowedColumns.delivery_notes = updates.delivery_notes?.trim() || null;
+    if (updates.platform !== undefined) allowedColumns.platform = updates.platform?.trim() || null;
+    if (updates.service_type !== undefined) allowedColumns.service_type = updates.service_type?.trim() || null;
+    if (updates.min_quantity !== undefined) {
+      allowedColumns.min_quantity =
+        updates.min_quantity !== null && !isNaN(Number(updates.min_quantity))
+          ? Number(updates.min_quantity)
+          : null;
+    }
+    if (updates.max_quantity !== undefined) {
+      allowedColumns.max_quantity =
+        updates.max_quantity !== null && !isNaN(Number(updates.max_quantity))
+          ? Number(updates.max_quantity)
+          : null;
+    }
+    if (updates.delivery_time_info !== undefined) allowedColumns.delivery_time_info = updates.delivery_time_info?.trim() || null;
+    if (updates.sort_order !== undefined) {
+      allowedColumns.sort_order =
+        updates.sort_order !== null && !isNaN(Number(updates.sort_order))
+          ? Number(updates.sort_order)
+          : 0;
+    }
+    if (updates.status !== undefined) allowedColumns.status = updates.status;
+    if (updates.featured !== undefined) allowedColumns.featured = Boolean(updates.featured);
+
+    allowedColumns.updated_at = new Date().toISOString();
+
+    let supabaseUpdatedItem: any = null;
+
+    if (isSupabaseConfigured && supabase) {
+      let hasSupabaseSession = false;
+      try {
+        const sessionRes = await supabase.auth.getSession();
+        hasSupabaseSession = Boolean(sessionRes?.data?.session);
+      } catch (e) {
+        // ignore
+      }
+
+      if (hasSupabaseSession) {
+        try {
+          let query = supabase.from('store_products').update(allowedColumns);
+
+          if (isValidUUID(id)) {
+            query = query.eq('id', id);
+          } else if (updates.slug || id) {
+            query = query.eq('slug', updates.slug || id);
+          }
+
+          const { data, error } = await query.select('*, store_categories(name)');
+
+          if (error) {
+            console.error('Supabase updateProduct error:', error);
+            throw new Error(error.message || 'Failed to update service in database.');
+          }
+
+          if (!data || data.length === 0) {
+            // If update by UUID failed to affect rows, attempt matching by unique slug
+            if (isValidUUID(id) && (updates.slug || id)) {
+              const { data: slugData, error: slugErr } = await supabase
+                .from('store_products')
+                .update(allowedColumns)
+                .eq('slug', updates.slug || id)
+                .select('*, store_categories(name)');
+
+              if (slugErr) throw new Error(slugErr.message);
+              if (!slugData || slugData.length === 0) {
+                throw new Error('Service not found or update affected 0 records.');
+              }
+              supabaseUpdatedItem = slugData[0];
+            } else {
+              throw new Error('Service not found or update affected 0 records.');
+            }
+          } else {
+            supabaseUpdatedItem = data[0];
+          }
+        } catch (err: any) {
+          console.error('Supabase updateProduct error:', err);
+          throw err;
+        }
+      }
+    }
+
+    // Update local cache and return finalized product
+    const products = await this.getProducts({ includeAllStatuses: true });
+    const idx = products.findIndex(
+      (p) => p.id === id || p.slug === id || (supabaseUpdatedItem && p.id === supabaseUpdatedItem.id)
+    );
+
+    let finalProduct: StoreProduct;
+    if (supabaseUpdatedItem) {
+      const { cleanAccessInfo, orderingFields } = unpackOrderingFields(supabaseUpdatedItem.access_info);
+      finalProduct = {
+        ...supabaseUpdatedItem,
+        access_info: cleanAccessInfo,
+        ordering_fields:
+          orderingFields && orderingFields.length > 0 ? orderingFields : (updates.ordering_fields || []),
+        category_name: supabaseUpdatedItem.store_categories?.name || updates.category_name,
+        thumbnail_url:
+          supabaseUpdatedItem.thumbnail_url ||
+          (supabaseUpdatedItem.thumbnail_path
+            ? supabaseUpdatedItem.thumbnail_path.startsWith('http')
+              ? supabaseUpdatedItem.thumbnail_path
+              : supabase?.storage.from('store-thumbnails').getPublicUrl(supabaseUpdatedItem.thumbnail_path).data.publicUrl
+            : null),
+      } as StoreProduct;
+    } else {
+      if (idx === -1) {
+        throw new Error('Service not found or update affected 0 records.');
+      }
+      finalProduct = {
+        ...products[idx],
+        ...updates,
+        ...(resolvedCategoryId !== undefined ? { category_id: resolvedCategoryId } : {}),
+        access_info: updates.access_info !== undefined ? updates.access_info : products[idx].access_info,
+        ordering_fields:
+          updates.ordering_fields !== undefined ? updates.ordering_fields : products[idx].ordering_fields,
+        updated_at: new Date().toISOString(),
+      };
+    }
+
+    if (idx !== -1) {
+      products[idx] = { ...products[idx], ...finalProduct };
+    } else {
+      products.unshift(finalProduct);
+    }
     safeStoreSet(STORE_STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-    return updated;
+
+    return finalProduct;
   },
 
   async deleteProduct(id: string): Promise<void> {
+    if (!checkIsAdminUser()) {
+      if (isSupabaseConfigured && supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const email = session?.user?.email?.toLowerCase().trim();
+        if (!email || email !== AUTHORIZED_ADMIN_EMAIL) {
+          throw new Error('Access Denied: Administrator permissions required.');
+        }
+      } else {
+        throw new Error('Access Denied: Administrator permissions required.');
+      }
+    }
+
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('store_products').delete().eq('id', id);
-      if (error) throw error;
-      return;
+      let query = supabase.from('store_products').delete();
+      if (isValidUUID(id)) {
+        query = query.eq('id', id);
+      } else {
+        query = query.eq('slug', id);
+      }
+      const { error } = await query;
+      if (error) {
+        console.error('Supabase deleteProduct error:', error);
+        throw new Error(error.message || 'Failed to delete service.');
+      }
     }
 
     const products = await this.getProducts({ includeAllStatuses: true });
-    const filtered = products.filter((p) => p.id !== id);
+    const filtered = products.filter((p) => p.id !== id && p.slug !== id);
     safeStoreSet(STORE_STORAGE_KEYS.PRODUCTS, JSON.stringify(filtered));
   },
 
