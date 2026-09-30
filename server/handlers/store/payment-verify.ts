@@ -42,25 +42,82 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 1. Fetch Order with items and payment history
-    let order: any = null;
-    try {
-      const { data: dbOrder, error: orderErr } = await supabase
-        .from('store_orders')
-        .select('*, store_order_items(*), store_payments(*)')
-        .or(`id.eq.${orderId},order_number.eq.${orderId}`)
-        .single();
+    const cleanId = String(orderId || '').trim();
+    const isCleanUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
 
-      if (!orderErr && dbOrder) {
-        order = dbOrder;
+    // 1. Fetch Order with items and payment history via universal resolution
+    let order: any = null;
+
+    try {
+      // 1.1 If cleanId is a UUID, check store_orders.id directly
+      if (isCleanUuid) {
+        const { data: byId } = await supabase
+          .from('store_orders')
+          .select('*, store_order_items(*), store_payments(*)')
+          .eq('id', cleanId)
+          .maybeSingle();
+        if (byId) order = byId;
       }
-    } catch (e) {
-      // Safe fallback
+
+      // 1.2 Search store_orders.order_number
+      if (!order) {
+        const { data: byNum } = await supabase
+          .from('store_orders')
+          .select('*, store_order_items(*), store_payments(*)')
+          .eq('order_number', cleanId)
+          .maybeSingle();
+        if (byNum) order = byNum;
+      }
+
+      // 1.3 Search store_payments by gateway_order_id, gateway_payment_id, gateway_reference
+      if (!order) {
+        const { data: payments } = await supabase
+          .from('store_payments')
+          .select('order_id')
+          .or(`gateway_order_id.eq.${cleanId},gateway_payment_id.eq.${cleanId},gateway_reference.eq.${cleanId}`)
+          .limit(1);
+
+        if (payments && payments.length > 0 && payments[0].order_id) {
+          const { data: byPayment } = await supabase
+            .from('store_orders')
+            .select('*, store_order_items(*), store_payments(*)')
+            .eq('id', payments[0].order_id)
+            .maybeSingle();
+          if (byPayment) order = byPayment;
+        }
+      }
+
+      // 1.4 If cleanId is UUID, check store_payments.id
+      if (!order && isCleanUuid) {
+        const { data: payById } = await supabase
+          .from('store_payments')
+          .select('order_id')
+          .eq('id', cleanId)
+          .maybeSingle();
+
+        if (payById && payById.order_id) {
+          const { data: byPayId } = await supabase
+            .from('store_orders')
+            .select('*, store_order_items(*), store_payments(*)')
+            .eq('id', payById.order_id)
+            .maybeSingle();
+          if (byPayId) order = byPayId;
+        }
+      }
+    } catch (lookupErr) {
+      console.warn('[payment-verify] Supabase order resolution notice:', lookupErr);
     }
 
     if (!order) {
-      order = getCachedOrder(orderId);
+      order = getCachedOrder(cleanId);
     }
+
+    console.log('[payment-verify] Order resolution:', {
+      requestedIdentifier: cleanId,
+      resolvedOrderNumber: order?.order_number,
+      resolvedOrderId: order?.id,
+      currentStatus: order?.status,
+    });
 
     if (!order) {
       return res.status(404).json({ error: 'Order not found in database.' });

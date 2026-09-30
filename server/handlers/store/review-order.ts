@@ -68,16 +68,31 @@ export default async function handler(req: any, res?: any) {
     const authClient = createClient(supabaseUrl, supabaseAnonKey);
     let adminEmail = '';
     let adminUserId = '';
+    let isAdmin = false;
 
     if (token) {
       const { data: userData, error: userError } = await authClient.auth.getUser(token);
       if (!userError && userData?.user) {
         adminUserId = userData.user.id;
         adminEmail = (userData.user.email || '').toLowerCase().trim();
+        if (
+          adminEmail === AUTHORIZED_ADMIN_EMAIL ||
+          userData.user.app_metadata?.role === 'admin' ||
+          userData.user.user_metadata?.role === 'admin' ||
+          userData.user.user_metadata?.role === 'super_admin'
+        ) {
+          isAdmin = true;
+        }
       }
     }
 
-    if (!adminEmail || adminEmail !== AUTHORIZED_ADMIN_EMAIL) {
+    console.log('[review-order] Admin auth evaluation:', {
+      hasToken: !!token,
+      adminEmail: adminEmail || 'NONE',
+      isAdmin,
+    });
+
+    if (!isAdmin) {
       return sendJsonResponse(res, 403, {
         success: false,
         error: 'Access Denied: Authorized administrator credentials required.',
@@ -107,23 +122,87 @@ export default async function handler(req: any, res?: any) {
       });
     }
 
-    // 2. Fetch target order
-    const { data: order, error: orderErr } = await adminClient
-      .from('store_orders')
-      .select('*, store_order_items(*), store_payments(*)')
-      .eq('id', orderId)
-      .single();
+    // 2. Fetch target order via universal lookup (supports UUID, order_number, payment gateway ID)
+    const cleanOrderId = String(orderId || '').trim();
+    const isCleanUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanOrderId);
+    let order: any = null;
 
-    if (orderErr || !order) {
+    // 2.1 UUID match
+    if (isCleanUuid) {
+      const { data: byId } = await adminClient
+        .from('store_orders')
+        .select('*, store_order_items(*), store_payments(*)')
+        .eq('id', cleanOrderId)
+        .maybeSingle();
+      if (byId) order = byId;
+    }
+
+    // 2.2 Order number match
+    if (!order) {
+      const { data: byNum } = await adminClient
+        .from('store_orders')
+        .select('*, store_order_items(*), store_payments(*)')
+        .eq('order_number', cleanOrderId)
+        .maybeSingle();
+      if (byNum) order = byNum;
+    }
+
+    // 2.3 Search store_payments by gateway_order_id, gateway_payment_id, gateway_reference
+    if (!order) {
+      const { data: payments } = await adminClient
+        .from('store_payments')
+        .select('order_id')
+        .or(`gateway_order_id.eq.${cleanOrderId},gateway_payment_id.eq.${cleanOrderId},gateway_reference.eq.${cleanOrderId}`)
+        .limit(1);
+
+      if (payments && payments.length > 0 && payments[0].order_id) {
+        const { data: byPayment } = await adminClient
+          .from('store_orders')
+          .select('*, store_order_items(*), store_payments(*)')
+          .eq('id', payments[0].order_id)
+          .maybeSingle();
+        if (byPayment) order = byPayment;
+      }
+    }
+
+    // 2.4 If cleanOrderId is UUID, check store_payments.id
+    if (!order && isCleanUuid) {
+      const { data: payById } = await adminClient
+        .from('store_payments')
+        .select('order_id')
+        .eq('id', cleanOrderId)
+        .maybeSingle();
+
+      if (payById && payById.order_id) {
+        const { data: byPayId } = await adminClient
+          .from('store_orders')
+          .select('*, store_order_items(*), store_payments(*)')
+          .eq('id', payById.order_id)
+          .maybeSingle();
+        if (byPayId) order = byPayId;
+      }
+    }
+
+    console.log('[review-order] Order resolution result:', {
+      requestedOrderId: cleanOrderId,
+      matchedOrderNumber: order?.order_number,
+      matchedOrderId: order?.id,
+      currentStatus: order?.status,
+      actionRequested: action,
+    });
+
+    if (!order) {
       return sendJsonResponse(res, 404, {
         success: false,
-        error: 'Store order not found.',
+        error: `Store order not found matching identifier: ${cleanOrderId}`,
       });
     }
 
     const prevStatus = order.status;
     const prevFulfillment = order.fulfillment_status || 'UNFULFILLED';
     const nowIso = new Date().toISOString();
+    const isUserUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(adminUserId);
+    const validAdminUserId = isUserUuid ? adminUserId : null;
 
     // ACTION 1: APPROVE_PAYMENT
     if (action === 'APPROVE_PAYMENT') {
@@ -131,8 +210,22 @@ export default async function handler(req: any, res?: any) {
       if (order.status === 'PAID' || order.status === 'DELIVERED') {
         return sendJsonResponse(res, 200, {
           success: true,
-          message: 'Order was already approved previously.',
+          message: `Order ${order.order_number} is already marked as ${order.status}.`,
           order,
+        });
+      }
+
+      if (order.status === 'CANCELLED') {
+        return sendJsonResponse(res, 400, {
+          success: false,
+          error: `Cannot approve order ${order.order_number}: Order has already been cancelled.`,
+        });
+      }
+
+      if (order.status === 'REJECTED') {
+        return sendJsonResponse(res, 400, {
+          success: false,
+          error: `Cannot approve order ${order.order_number}: Order was previously rejected.`,
         });
       }
 
@@ -142,16 +235,19 @@ export default async function handler(req: any, res?: any) {
           status: 'PAID',
           fulfillment_status: 'READY_FOR_DELIVERY',
           approved_at: nowIso,
-          approved_by: adminUserId,
+          approved_by: validAdminUserId,
           payment_reviewed_at: nowIso,
-          payment_reviewed_by: adminUserId,
+          payment_reviewed_by: validAdminUserId,
           updated_at: nowIso,
         })
         .eq('id', order.id)
         .select()
         .single();
 
-      if (updateErr) throw updateErr;
+      if (updateErr) {
+        console.error('[review-order] Order status update error:', updateErr);
+        throw updateErr;
+      }
 
       // Update related payment records to SUCCESS
       await adminClient
@@ -173,10 +269,13 @@ export default async function handler(req: any, res?: any) {
           .maybeSingle();
 
         if (!existingDl) {
+          const itemUserId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(order.user_id)
+            ? order.user_id
+            : null;
           await adminClient.from('store_downloads').insert({
             order_id: order.id,
             order_item_id: item.id,
-            user_id: order.user_id || null,
+            user_id: itemUserId,
             product_id: item.product_id,
             download_count: 0,
           });
@@ -186,7 +285,7 @@ export default async function handler(req: any, res?: any) {
       // Record audit log
       await adminClient.from('store_order_audit_logs').insert({
         order_id: order.id,
-        admin_user_id: adminUserId,
+        admin_user_id: validAdminUserId,
         admin_email: adminEmail,
         action: 'PAYMENT_APPROVED',
         previous_status: prevStatus,
@@ -198,10 +297,16 @@ export default async function handler(req: any, res?: any) {
         },
       });
 
+      console.log('[review-order] Payment approved successfully for order:', {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        newStatus: 'PAID',
+      });
+
       return sendJsonResponse(res, 200, {
         success: true,
-        message: 'Payment approved successfully. Order is marked PAID and ready for delivery.',
-        order: updatedOrder,
+        message: `Payment for order ${order.order_number} approved successfully. Order is marked PAID and downloads unlocked.`,
+        order: updatedOrder || { ...order, status: 'PAID', fulfillment_status: 'READY_FOR_DELIVERY' },
       });
     }
 

@@ -822,26 +822,81 @@ export const storeDataService = {
   },
 
   async getOrderById(id: string, userId?: string): Promise<StoreOrder | null> {
+    const cleanId = String(id || '').trim();
+    if (!cleanId) return null;
+
     if (isSupabaseConfigured && supabase) {
       try {
-        let query = supabase
-          .from('store_orders')
-          .select('*, store_order_items(*, store_products(*)), store_payments(*)')
-          .eq('id', id);
+        let orderData: any = null;
 
-        if (userId) {
-          query = query.eq('user_id', userId);
+        // 1. If cleanId is a UUID, check store_orders.id directly
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)) {
+          let q = supabase
+            .from('store_orders')
+            .select('*, store_order_items(*, store_products(*)), store_payments(*)')
+            .eq('id', cleanId);
+          if (userId) q = q.eq('user_id', userId);
+          const { data } = await q.maybeSingle();
+          if (data) orderData = data;
         }
 
-        const { data, error } = await query.single();
-        if (!error && data) {
+        // 2. Lookup by store_orders.order_number
+        if (!orderData) {
+          let q = supabase
+            .from('store_orders')
+            .select('*, store_order_items(*, store_products(*)), store_payments(*)')
+            .eq('order_number', cleanId);
+          if (userId) q = q.eq('user_id', userId);
+          const { data } = await q.maybeSingle();
+          if (data) orderData = data;
+        }
+
+        // 3. Lookup by store_payments gateway_order_id, gateway_payment_id, gateway_reference
+        if (!orderData) {
+          const { data: payments } = await supabase
+            .from('store_payments')
+            .select('order_id')
+            .or(`gateway_order_id.eq.${cleanId},gateway_payment_id.eq.${cleanId},gateway_reference.eq.${cleanId}`)
+            .limit(1);
+
+          if (payments && payments.length > 0 && payments[0].order_id) {
+            let q = supabase
+              .from('store_orders')
+              .select('*, store_order_items(*, store_products(*)), store_payments(*)')
+              .eq('id', payments[0].order_id);
+            if (userId) q = q.eq('user_id', userId);
+            const { data } = await q.maybeSingle();
+            if (data) orderData = data;
+          }
+        }
+
+        // 4. If cleanId is a UUID, check store_payments.id
+        if (!orderData && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)) {
+          const { data: pay } = await supabase
+            .from('store_payments')
+            .select('order_id')
+            .eq('id', cleanId)
+            .maybeSingle();
+
+          if (pay && pay.order_id) {
+            let q = supabase
+              .from('store_orders')
+              .select('*, store_order_items(*, store_products(*)), store_payments(*)')
+              .eq('id', pay.order_id);
+            if (userId) q = q.eq('user_id', userId);
+            const { data } = await q.maybeSingle();
+            if (data) orderData = data;
+          }
+        }
+
+        if (orderData) {
           return {
-            ...data,
-            items: (data.store_order_items || []).map((item: any) => ({
+            ...orderData,
+            items: (orderData.store_order_items || []).map((item: any) => ({
               ...item,
               product: item.store_products || undefined,
             })),
-            payments: data.store_payments || [],
+            payments: orderData.store_payments || [],
           } as StoreOrder;
         }
       } catch (err) {
@@ -851,7 +906,12 @@ export const storeDataService = {
 
     const raw = safeStoreGet(STORE_STORAGE_KEYS.ORDERS);
     const orders: StoreOrder[] = raw ? JSON.parse(raw) : [];
-    const order = orders.find((o) => o.id === id || o.order_number === id);
+    const order = orders.find(
+      (o) =>
+        o.id === cleanId ||
+        o.order_number === cleanId ||
+        (o.payments && o.payments.some((p) => p.gateway_order_id === cleanId || p.gateway_payment_id === cleanId))
+    );
     if (!order) return null;
     if (userId && order.user_id !== userId) return null;
 
@@ -958,7 +1018,30 @@ export const storeDataService = {
   }): Promise<{ success: boolean; message?: string; error?: string; order?: StoreOrder }> {
     try {
       const session = (await supabase?.auth.getSession())?.data.session;
-      const token = session?.access_token || '';
+      let token = session?.access_token || '';
+
+      // Fallback: check localStorage for persisted Supabase auth token
+      if (!token && typeof window !== 'undefined' && window.localStorage) {
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i) || '';
+            if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+              const raw = localStorage.getItem(key);
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                token = parsed.access_token || parsed?.currentSession?.access_token || '';
+                if (token) break;
+              }
+            }
+          }
+        } catch {}
+      }
+
+      console.log('[storeDataService] Sending reviewOrder request:', {
+        action: params.action,
+        orderId: params.orderId,
+        hasToken: !!token,
+      });
 
       const res = await fetch('/api/store/admin/review-order', {
         method: 'POST',
@@ -990,6 +1073,21 @@ export const storeDataService = {
 
       if (!res.ok) {
         throw new Error(data?.error || data?.message || `Payment review action failed with status ${res.status}`);
+      }
+
+      // Also sync local storage order if present
+      if (data?.order) {
+        try {
+          const raw = safeStoreGet(STORE_STORAGE_KEYS.ORDERS);
+          if (raw) {
+            let localOrders: StoreOrder[] = JSON.parse(raw);
+            const idx = localOrders.findIndex((o) => o.id === data.order.id || o.order_number === data.order.order_number);
+            if (idx >= 0) {
+              localOrders[idx] = { ...localOrders[idx], ...data.order };
+              safeStoreSet(STORE_STORAGE_KEYS.ORDERS, JSON.stringify(localOrders));
+            }
+          }
+        } catch {}
       }
 
       return data || { success: true, message: 'Payment review processed successfully.' };

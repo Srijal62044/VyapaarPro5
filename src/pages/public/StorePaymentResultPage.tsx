@@ -23,7 +23,35 @@ import { SocialServiceOrderCard } from '../../components/store/SocialServiceOrde
 
 export const StorePaymentResultPage: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const orderId = searchParams.get('order_id') || searchParams.get('orderId');
+
+  // Extract all possible identifiers that FamGateway or internal redirects may pass
+  const rawOrderId = searchParams.get('order_id') || searchParams.get('orderId');
+  const rawOrderNumber = searchParams.get('order_number') || searchParams.get('orderNumber');
+  const rawReference =
+    searchParams.get('reference') ||
+    searchParams.get('ref') ||
+    searchParams.get('payment_reference') ||
+    searchParams.get('transaction_id') ||
+    searchParams.get('txn_id') ||
+    searchParams.get('payment_id') ||
+    searchParams.get('paymentId') ||
+    searchParams.get('gateway_order_id') ||
+    searchParams.get('id');
+
+  const orderReference = (rawOrderId || rawOrderNumber || rawReference || '').trim();
+
+  // Safe non-sensitive diagnostic logging
+  useEffect(() => {
+    const paramNames = Array.from(searchParams.keys());
+    console.log('[StorePaymentResultPage] Payment return received:', {
+      receivedParams: paramNames,
+      extractedReference: orderReference ? orderReference.slice(0, 32) : 'NONE',
+      hasOrderId: !!rawOrderId,
+      hasOrderNumber: !!rawOrderNumber,
+      hasReference: !!rawReference,
+    });
+  }, [searchParams]);
+
   const { settings } = useSettings();
 
   const [order, setOrder] = useState<StoreOrder | null>(null);
@@ -34,7 +62,8 @@ export const StorePaymentResultPage: React.FC = () => {
 
   // Authoritatively verify payment with backend endpoint
   const checkVerification = async (isManual = false) => {
-    if (!orderId) {
+    if (!orderReference) {
+      console.warn('[StorePaymentResultPage] No order reference available to verify.');
       setIsLoading(false);
       return;
     }
@@ -42,30 +71,55 @@ export const StorePaymentResultPage: React.FC = () => {
     if (isManual) setIsVerifying(true);
 
     try {
+      console.log('[StorePaymentResultPage] Initiating backend verification for:', orderReference.slice(0, 32));
       // 1. Call server-side authoritative verify endpoint
-      const res = await fetch(`/api/store/payment/verify?order_id=${encodeURIComponent(orderId)}`, {
+      const res = await fetch(`/api/store/payment/verify?order_id=${encodeURIComponent(orderReference)}`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
       });
 
       if (res.ok) {
         const verifyData = await res.json();
-        // 2. Fetch fresh order model
-        const updatedOrder = await storeDataService.getOrderById(orderId);
+        console.log('[StorePaymentResultPage] Server verify result:', {
+          resolvedOrderId: verifyData.orderId,
+          orderNumber: verifyData.orderNumber,
+          status: verifyData.status,
+        });
+
+        // 2. Fetch fresh order model using universal lookup
+        const lookupKey = verifyData.orderId || verifyData.orderNumber || orderReference;
+        const updatedOrder = await storeDataService.getOrderById(lookupKey);
         if (updatedOrder) {
-          if (verifyData.status === 'PAID') {
-            updatedOrder.status = 'PAID';
-          } else if (verifyData.status === 'PAYMENT_REVIEW') {
-            updatedOrder.status = 'PAYMENT_REVIEW';
+          if (verifyData.status) {
+            updatedOrder.status = verifyData.status;
           }
+          console.log('[StorePaymentResultPage] Order resolved successfully:', {
+            orderNumber: updatedOrder.order_number,
+            status: updatedOrder.status,
+          });
           setOrder(updatedOrder);
+        } else {
+          console.warn('[StorePaymentResultPage] Verified order lookup failed for key:', lookupKey);
         }
       } else {
-        const fallbackOrder = await storeDataService.getOrderById(orderId);
-        setOrder(fallbackOrder);
+        console.log('[StorePaymentResultPage] Direct verify endpoint returned status:', res.status, '- attempting direct DB lookup');
+        const fallbackOrder = await storeDataService.getOrderById(orderReference);
+        if (fallbackOrder) {
+          console.log('[StorePaymentResultPage] Fallback lookup matched order:', {
+            orderNumber: fallbackOrder.order_number,
+            status: fallbackOrder.status,
+          });
+          setOrder(fallbackOrder);
+        }
       }
     } catch (err) {
-      console.error('Failed to verify order status:', err);
+      console.error('[StorePaymentResultPage] Failed to verify order status:', err);
+      try {
+        const fallbackOrder = await storeDataService.getOrderById(orderReference);
+        if (fallbackOrder) setOrder(fallbackOrder);
+      } catch (e) {
+        console.error('[StorePaymentResultPage] Fallback lookup error:', e);
+      }
     } finally {
       setIsLoading(false);
       setIsVerifying(false);
@@ -74,7 +128,7 @@ export const StorePaymentResultPage: React.FC = () => {
 
   useEffect(() => {
     checkVerification();
-  }, [orderId]);
+  }, [orderReference]);
 
   // Polling for review updates
   useEffect(() => {

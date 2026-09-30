@@ -53,6 +53,22 @@
       "destination": "/api/famgateway-webhook"
     },
     {
+      "source": "/api/store/admin/review-order",
+      "destination": "/api/store/[...route]?route=admin/review-order"
+    },
+    {
+      "source": "/api/store/payment/verify",
+      "destination": "/api/store/[...route]?route=payment/verify"
+    },
+    {
+      "source": "/api/store/download",
+      "destination": "/api/store/[...route]?route=download"
+    },
+    {
+      "source": "/api/support/(.*)",
+      "destination": "/api/support/[...route]?route=$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
