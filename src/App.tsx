@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './contexts/AuthContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { ScrollToTop } from './components/common/ScrollToTop';
@@ -145,6 +146,7 @@ export default function App() {
             </Route>
           </Routes>
         </BrowserRouter>
+        <Analytics />
       </AuthProvider>
     </SettingsProvider>
   );
