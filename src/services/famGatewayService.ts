@@ -139,15 +139,22 @@ export const famGatewayService = {
         return { success: false, status: 'UNKNOWN', paid: false, error: 'No order ID provided' };
       }
 
-      const res = await fetch(`/api/famgateway/order-status/${encodeURIComponent(orderIdentifier)}`, {
+      // 1. Try /api/famgateway/order-status/:orderId
+      let res = await fetch(`/api/famgateway/order-status/${encodeURIComponent(orderIdentifier)}`, {
         method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
+        headers: { Accept: 'application/json' },
       });
 
+      // 2. Fallback to /api/famgateway/order-status?orderId=...
       if (!res.ok) {
-        // Fallback to /api/store/payment/verify
+        res = await fetch(`/api/famgateway/order-status?orderId=${encodeURIComponent(orderIdentifier)}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
+      }
+
+      // 3. Fallback to /api/store/payment/verify?order_id=...
+      if (!res.ok) {
         const fallbackRes = await fetch(`/api/store/payment/verify?order_id=${encodeURIComponent(orderIdentifier)}`, {
           method: 'GET',
           headers: { Accept: 'application/json' },
@@ -161,6 +168,7 @@ export const famGatewayService = {
             orderNumber: fallbackData.orderNumber,
             status: fallbackData.status || 'PENDING',
             paid: isPaid,
+            isPaid,
           };
         }
         return { success: false, status: 'PENDING', paid: false };

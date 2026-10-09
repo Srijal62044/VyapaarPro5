@@ -710,20 +710,27 @@ async function handlePaymentVerify(req: any, res: any) {
     }
 
     const latestPayment = order.store_payments?.[0];
-    const gatewayOrderId = latestPayment?.gateway_order_id;
+    const candidateIds = [
+      latestPayment?.gateway_order_id,
+      order.order_number,
+      order.id,
+    ].filter(Boolean);
 
-    if (!gatewayOrderId) {
-      return sendJsonResponse(res, 200, {
-        orderId: order.id,
-        orderNumber: order.order_number,
-        status: order.status,
-        verified: false,
-        message: 'No gateway order ID associated with this order.',
-      });
+    // Call FamGateway verify-order / checkout-status endpoints if configured
+    let famApiKey = (process.env.FAMGATEWAY_API_KEY || '').trim();
+    if (!famApiKey) {
+      try {
+        const { data: settingRow } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'payment_settings')
+          .maybeSingle();
+        if (settingRow?.value?.famgateway_api_key) {
+          famApiKey = String(settingRow.value.famgateway_api_key).trim();
+        }
+      } catch {}
     }
 
-    // Call FamGateway verify-order endpoint if configured
-    const famApiKey = process.env.FAMGATEWAY_API_KEY;
     if (!famApiKey) {
       return sendJsonResponse(res, 200, {
         orderId: order.id,
@@ -734,33 +741,58 @@ async function handlePaymentVerify(req: any, res: any) {
       });
     }
 
-    const verifyUrl = `https://famgateway.in/api/verify-order.php?api_key=${encodeURIComponent(famApiKey.trim())}&order_id=${encodeURIComponent(gatewayOrderId.trim())}`;
     let famGatewayStatus = 'pending';
     let famGatewayData: any = null;
+    let verifiedId = '';
 
-    try {
-      const gwRes = await fetch(verifyUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${famApiKey.trim()}`,
-          'X-Api-Key': famApiKey.trim(),
-          'Accept': 'application/json',
-        },
-      });
-
-      const rawText = await gwRes.text();
+    for (const testId of candidateIds) {
+      // 1. Try verify-order.php
       try {
-        famGatewayData = JSON.parse(rawText);
-      } catch {
-        famGatewayData = { rawText };
-      }
+        const verifyUrl = `https://famgateway.in/api/verify-order.php?api_key=${encodeURIComponent(famApiKey)}&order_id=${encodeURIComponent(testId)}`;
+        const gwRes = await fetch(verifyUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${famApiKey}`,
+            'X-Api-Key': famApiKey,
+            'Accept': 'application/json',
+          },
+        });
+        if (gwRes.ok) {
+          const json = await gwRes.json();
+          const st = String(json.status || json.data?.status || '').toLowerCase().trim();
+          if (st === 'success' || st === 'completed' || st === 'paid') {
+            famGatewayStatus = 'success';
+            famGatewayData = json;
+            verifiedId = testId;
+            break;
+          }
+        }
+      } catch (err) {}
 
-      if (gwRes.ok && famGatewayData) {
-        famGatewayStatus = (famGatewayData.status || '').toLowerCase().trim();
-      }
-    } catch (networkErr: any) {
-      console.error('[payment-verify] FamGateway verification network error:', networkErr);
+      // 2. Try checkout-status.php
+      try {
+        const statusUrl = `https://famgateway.in/api/checkout-status.php?order_id=${encodeURIComponent(testId)}&api_key=${encodeURIComponent(famApiKey)}`;
+        const gwRes = await fetch(statusUrl, {
+          method: 'GET',
+          headers: {
+            'X-Api-Key': famApiKey,
+            'Accept': 'application/json',
+          },
+        });
+        if (gwRes.ok) {
+          const json = await gwRes.json();
+          const st = String(json.status || json.data?.status || '').toLowerCase().trim();
+          if (st === 'success' || st === 'completed' || st === 'paid') {
+            famGatewayStatus = 'success';
+            famGatewayData = json;
+            verifiedId = testId;
+            break;
+          }
+        }
+      } catch (err) {}
     }
+
+    const gatewayOrderId = verifiedId || latestPayment?.gateway_order_id || order.order_number;
 
     const paymentData = famGatewayData?.data || famGatewayData?.response?.data || famGatewayData;
 

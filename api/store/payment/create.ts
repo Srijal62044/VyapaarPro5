@@ -137,17 +137,43 @@ export default async function handler(req: any, res: any) {
     }
 
     // 2. FamGateway & UPI Details
-    const famApiKey = process.env.FAMGATEWAY_API_KEY;
-    const famMerchantId = process.env.FAMGATEWAY_MERCHANT_ID;
-    const merchantVpa =
+    let famApiKey = (process.env.FAMGATEWAY_API_KEY || '').trim();
+    let famMerchantId = (process.env.FAMGATEWAY_MERCHANT_ID || '').trim();
+    let merchantVpa = (
       process.env.FAMGATEWAY_UPI_VPA ||
       process.env.UPI_ID ||
       process.env.PAYMENT_UPI_VPA ||
-      'vyapaarpro@upi';
-    const merchantName =
+      'vyapaarpro@upi'
+    ).trim();
+    let merchantName = (
       process.env.FAMGATEWAY_MERCHANT_NAME ||
       process.env.MERCHANT_NAME ||
-      'VyapaarPro';
+      'VyapaarPro'
+    ).trim();
+
+    if (supabase) {
+      try {
+        const { data: settingRow } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'payment_settings')
+          .maybeSingle();
+        if (settingRow?.value) {
+          if (!famApiKey && settingRow.value.famgateway_api_key) {
+            famApiKey = String(settingRow.value.famgateway_api_key).trim();
+          }
+          if (!famMerchantId && settingRow.value.famgateway_merchant_id) {
+            famMerchantId = String(settingRow.value.famgateway_merchant_id).trim();
+          }
+          if (settingRow.value.famgateway_upi_vpa) {
+            merchantVpa = String(settingRow.value.famgateway_upi_vpa).trim();
+          }
+          if (settingRow.value.famgateway_merchant_name) {
+            merchantName = String(settingRow.value.famgateway_merchant_name).trim();
+          }
+        }
+      } catch {}
+    }
 
     let paymentUrl = '';
     let gatewayOrderId = `FG_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -155,12 +181,13 @@ export default async function handler(req: any, res: any) {
     let rawResponseData: any = null;
 
     if (famApiKey) {
-      // Official documented endpoint: https://famgateway.in/api/create-order.php
-      const famEndpoint = 'https://famgateway.in/api/create-order.php';
-
+      const webhookUrl = `${siteUrl.replace(/\/+$/, '')}/api/famgateway/webhook`;
       const gatewayPayload: any = {
         amount: amountInRupees,
+        customer_name: order.customer_name || 'Valued Customer',
         redirect_url: redirectUrl,
+        webhook_url: webhookUrl,
+        order_id: String(order.id || order.order_number),
       };
       if (famMerchantId) {
         gatewayPayload.merchant_id = famMerchantId;
@@ -168,48 +195,50 @@ export default async function handler(req: any, res: any) {
 
       console.log('[payment/create] calling FamGateway API', { amount: amountInRupees });
 
-      try {
-        const gatewayRes = await fetch(famEndpoint, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${famApiKey.trim()}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(gatewayPayload),
-        });
+      const endpoints = [
+        'https://famgateway.in/api/create-order',
+        'https://famgateway.in/api/create-order.php',
+      ];
 
-        const rawText = await gatewayRes.text();
+      for (const endpoint of endpoints) {
         try {
-          rawResponseData = JSON.parse(rawText);
-        } catch {
-          rawResponseData = { rawText };
-        }
-
-        console.log('[payment/create] FamGateway response status:', gatewayRes.status);
-
-        if (gatewayRes.ok && rawResponseData) {
-          const respData = rawResponseData.response?.data || rawResponseData.data || rawResponseData;
-          paymentUrl =
-            respData.checkout_url ||
-            respData.payment_url ||
-            respData.url ||
-            respData.link ||
-            '';
-
-          const retId = respData.order_id || respData.id || respData.transaction_id;
-          if (retId) gatewayOrderId = String(retId);
-
-          if (respData.upi_url || respData.upi_intent) {
-            upiUrl = respData.upi_url || respData.upi_intent;
-          }
-        } else {
-          console.warn('[payment/create] FamGateway API notice:', {
-            status: gatewayRes.status,
-            message: rawResponseData?.message || rawResponseData?.error,
+          const gatewayRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${famApiKey}`,
+              'X-Api-Key': famApiKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(gatewayPayload),
           });
+
+          const rawText = await gatewayRes.text();
+          try {
+            rawResponseData = JSON.parse(rawText);
+          } catch {
+            rawResponseData = { rawText };
+          }
+
+          if (gatewayRes.ok && rawResponseData) {
+            const respData = rawResponseData.response?.data || rawResponseData.data || rawResponseData;
+            paymentUrl =
+              respData.checkout_url ||
+              respData.payment_url ||
+              respData.url ||
+              respData.link ||
+              '';
+
+            const retId = respData.order_id || respData.id || respData.transaction_id;
+            if (retId) gatewayOrderId = String(retId);
+
+            if (respData.upi_url || respData.upi_intent) {
+              upiUrl = respData.upi_url || respData.upi_intent;
+            }
+            break;
+          }
+        } catch (networkErr: any) {
+          console.warn('[payment/create] FamGateway endpoint probe notice:', networkErr?.message);
         }
-      } catch (networkErr: any) {
-        console.warn('[payment/create] FamGateway network notice:', networkErr?.message);
       }
     } else {
       console.log('[payment/create] FAMGATEWAY_API_KEY will be loaded from Vercel env; using direct UPI in preview.');

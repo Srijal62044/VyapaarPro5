@@ -20,9 +20,12 @@ import {
   RefreshCw,
   Eye,
   Trash2,
+  CreditCard,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useSettings } from '../../contexts/SettingsContext';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { SEO } from '../../components/common/SEO';
 import { BrandLogo } from '../../components/common/BrandLogo';
 
@@ -33,7 +36,19 @@ export const AdminSettingsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'branding' | 'developer' | 'legal' | 'database'>('branding');
+  const [activeTab, setActiveTab] = useState<'branding' | 'developer' | 'legal' | 'database' | 'payments'>('branding');
+
+  // FamGateway Payment Gateway Configuration state
+  const [paymentConfig, setPaymentConfig] = useState({
+    famgateway_api_key: '',
+    famgateway_merchant_id: '',
+    famgateway_upi_vpa: 'viralpulse@upi',
+    famgateway_merchant_name: 'ViralPulse Store',
+  });
+  const [isSavingPayments, setIsSavingPayments] = useState(false);
+  const [paymentSaveMsg, setPaymentSaveMsg] = useState('');
+  const [paymentSaveError, setPaymentSaveError] = useState('');
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   // Synchronize form whenever settings finish loading or update
   React.useEffect(() => {
@@ -41,6 +56,54 @@ export const AdminSettingsPage: React.FC = () => {
       setForm(settings);
     }
   }, [settings]);
+
+  // Load payment settings from database
+  React.useEffect(() => {
+    async function loadPaymentSettings() {
+      if (!supabase) return;
+      try {
+        const { data } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'payment_settings')
+          .maybeSingle();
+
+        if (data?.value) {
+          setPaymentConfig((prev) => ({
+            ...prev,
+            ...data.value,
+          }));
+        }
+      } catch (err) {
+        // Non-blocking
+      }
+    }
+    loadPaymentSettings();
+  }, []);
+
+  const handleSavePayments = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPayments(true);
+    setPaymentSaveMsg('');
+    setPaymentSaveError('');
+    try {
+      if (supabase) {
+        const { error } = await supabase
+          .from('settings')
+          .upsert(
+            { key: 'payment_settings', value: paymentConfig, updated_at: new Date().toISOString() },
+            { onConflict: 'key' }
+          );
+        if (error) throw error;
+      }
+      setPaymentSaveMsg('FamGateway credentials and payment settings saved successfully!');
+      setTimeout(() => setPaymentSaveMsg(''), 4000);
+    } catch (err: any) {
+      setPaymentSaveError(err.message || 'Failed to save payment settings.');
+    } finally {
+      setIsSavingPayments(false);
+    }
+  };
 
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [logoUploadError, setLogoUploadError] = useState('');
@@ -185,6 +248,18 @@ export const AdminSettingsPage: React.FC = () => {
         >
           <Database className="w-4 h-4" />
           <span>Supabase / Database</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('payments')}
+          className={`pb-3 transition cursor-pointer border-b-2 flex items-center space-x-2 whitespace-nowrap ${
+            activeTab === 'payments'
+              ? 'border-violet-500 text-violet-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          <span>Payment Gateway (FamGateway)</span>
         </button>
       </div>
 
@@ -966,6 +1041,182 @@ export const AdminSettingsPage: React.FC = () => {
               To deploy or update your live Supabase project, execute <code className="text-indigo-300">supabase/complete_vyapaarpro_migration.sql</code> in the Supabase SQL Editor.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* PAYMENTS (FAMGATEWAY) TAB */}
+      {activeTab === 'payments' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl text-xs">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div>
+              <h3 className="text-base font-bold text-white">FamGateway Automated UPI Payment Gateway</h3>
+              <p className="text-slate-400 mt-0.5">
+                Configure your FamGateway API credentials for automated payment verification via Gmail IMAP.
+              </p>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+              Zero Transaction Fees (P2P UPI)
+            </span>
+          </div>
+
+          {paymentSaveMsg && (
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-xl flex items-center space-x-2">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              <span>{paymentSaveMsg}</span>
+            </div>
+          )}
+
+          {paymentSaveError && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl flex items-start space-x-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{paymentSaveError}</span>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSavePayments} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  FamGateway API Key <span className="text-violet-400 font-semibold">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={paymentConfig.famgateway_api_key}
+                  onChange={(e) =>
+                    setPaymentConfig({ ...paymentConfig, famgateway_api_key: e.target.value })
+                  }
+                  placeholder="e.g. fg_live_xxxxxxxxxxxxxxxx"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-violet-500"
+                />
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  Obtained from your FamGateway dashboard (famgateway.in/developer).
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Merchant ID (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={paymentConfig.famgateway_merchant_id}
+                  onChange={(e) =>
+                    setPaymentConfig({ ...paymentConfig, famgateway_merchant_id: e.target.value })
+                  }
+                  placeholder="e.g. FG_MERCHANT_123"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-violet-500"
+                />
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  FamGateway merchant identifier if provided by the gateway.
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Primary Merchant UPI VPA / ID <span className="text-violet-400 font-semibold">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={paymentConfig.famgateway_upi_vpa}
+                  onChange={(e) =>
+                    setPaymentConfig({ ...paymentConfig, famgateway_upi_vpa: e.target.value })
+                  }
+                  placeholder="e.g. viralpulse@upi or aryan@fam"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono text-xs focus:outline-none focus:border-violet-500"
+                />
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  The FamPay or UPI ID linked to your FamGateway connected Gmail inbox.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Merchant Display Name
+                </label>
+                <input
+                  type="text"
+                  value={paymentConfig.famgateway_merchant_name}
+                  onChange={(e) =>
+                    setPaymentConfig({ ...paymentConfig, famgateway_merchant_name: e.target.value })
+                  }
+                  placeholder="e.g. ViralPulse Store"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-violet-500"
+                />
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  Payee brand name shown on customer UPI apps (GPay / PhonePe).
+                </span>
+              </div>
+            </div>
+
+            {/* Webhook URL copy box */}
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+              <span className="font-bold text-white block">Your Automated Webhook URL:</span>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/famgateway/webhook`}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-indigo-300 font-mono text-[11px] select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `${window.location.origin}/api/famgateway/webhook`;
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(url);
+                      setCopiedWebhook(true);
+                      setTimeout(() => setCopiedWebhook(false), 2000);
+                    }
+                  }}
+                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs flex items-center space-x-1 shrink-0 transition cursor-pointer"
+                >
+                  {copiedWebhook ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedWebhook ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Copy and paste this webhook URL into your FamGateway dashboard. FamGateway sends instantaneous HMAC-SHA256 settlement notifications directly to this endpoint.
+              </p>
+            </div>
+
+            {/* Integration Instructions */}
+            <div className="p-4 rounded-xl bg-violet-950/20 border border-violet-500/20 space-y-2 text-[11px]">
+              <h5 className="font-bold text-violet-300 flex items-center space-x-1.5">
+                <ShieldCheck className="w-4 h-4 text-violet-400" />
+                <span>How FamGateway Automated Verification Operates:</span>
+              </h5>
+              <ol className="list-decimal list-inside space-y-1 text-slate-300 pl-1">
+                <li>Register for a free account at <strong className="text-white">famgateway.in</strong>.</li>
+                <li>Connect your FamPay Gmail account on FamGateway Integrations and enable IMAP in Gmail.</li>
+                <li>Enter your FamGateway API Key above and tap Save.</li>
+                <li>When customers pay via UPI, FamGateway verifies the Gmail notification in &lt;5 seconds and automatically marks the order as <strong className="text-emerald-400">PAID</strong>.</li>
+                <li>Fake UTRs are rejected by the banking switch and cannot mark transactions as paid.</li>
+              </ol>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={isSavingPayments}
+                className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold text-xs flex items-center space-x-2 transition shadow-lg shadow-violet-600/20 cursor-pointer"
+              >
+                {isSavingPayments ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving Credentials...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Payment Settings</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>
