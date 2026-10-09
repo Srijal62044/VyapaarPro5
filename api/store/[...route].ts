@@ -770,20 +770,20 @@ async function handlePaymentVerify(req: any, res: any) {
       const senderName = paymentData?.sender_name || null;
       const paymentTime = paymentData?.payment_time_ist || new Date().toISOString();
 
-      if (order.status !== 'PAYMENT_REVIEW') {
+      if (order.status !== 'PAID') {
         await supabase
           .from('store_orders')
           .update({
-            status: 'PAYMENT_REVIEW',
+            status: 'PAID',
             updated_at: new Date().toISOString(),
           })
           .eq('id', order.id);
 
         await supabase.from('store_order_audit_logs').insert({
           order_id: order.id,
-          action: 'PAYMENT_SUBMITTED_FOR_REVIEW',
+          action: 'PAYMENT_VERIFIED_AUTOMATIC',
           previous_status: order.status,
-          new_status: 'PAYMENT_REVIEW',
+          new_status: 'PAID',
           details: {
             gatewayOrderId,
             transactionId,
@@ -799,7 +799,7 @@ async function handlePaymentVerify(req: any, res: any) {
         await supabase
           .from('store_payments')
           .update({
-            status: 'REVIEW',
+            status: 'SUCCESS',
             gateway_payment_id: transactionId,
             gateway_reference: utr || transactionId,
             raw_reference_metadata: {
@@ -814,7 +814,7 @@ async function handlePaymentVerify(req: any, res: any) {
       return sendJsonResponse(res, 200, {
         orderId: order.id,
         orderNumber: order.order_number,
-        status: 'PAYMENT_REVIEW',
+        status: 'PAID',
         verified: true,
         amountPaise: order.total_paise,
         currency: order.currency,
@@ -822,7 +822,7 @@ async function handlePaymentVerify(req: any, res: any) {
         gatewayPaymentId: transactionId,
         utr,
         senderName,
-        message: 'Payment received at gateway. Awaiting administrator review.',
+        message: 'Payment verified and completed automatically!',
       });
     }
 

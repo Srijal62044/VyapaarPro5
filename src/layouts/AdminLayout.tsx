@@ -20,6 +20,7 @@ import {
   Package,
   ShieldCheck,
   Share2,
+  Receipt,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { BrandLogo } from '../components/common/BrandLogo';
@@ -104,7 +105,7 @@ export const AdminLayout: React.FC = () => {
     { label: 'Projects & Milestones', href: '/admin/projects', icon: FolderKanban },
     { label: 'Social Media Services', href: '/admin/store/social-services', icon: Share2 },
     { label: 'Digital Store', href: '/admin/store', icon: ShoppingBag },
-    { label: 'Payment Reviews', href: '/admin/store/reviews', icon: ShieldCheck },
+    { label: 'Store Orders', href: '/admin/store/orders', icon: Receipt },
     { label: 'Store Products', href: '/admin/store/products', icon: Package },
     { label: 'Client Directory', href: '/admin/clients', icon: Users },
     { label: 'Portfolio Showcase', href: '/admin/portfolio', icon: Image },

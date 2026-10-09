@@ -145,6 +145,34 @@ export const PaymentQRModal: React.FC<PaymentQRModalProps> = ({
     }
   };
 
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [checkStatusNotice, setCheckStatusNotice] = useState('');
+
+  const handleManualCheckStatus = async () => {
+    setIsCheckingStatus(true);
+    setCheckStatusNotice('');
+    try {
+      const res = await famGatewayService.checkOrderStatus(orderId);
+      if (res.isPaid || res.status === 'SUCCESS' || res.status === 'PAID') {
+        setIsPaid(true);
+        setIsPolling(false);
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        if (onPaymentSuccess) {
+          onPaymentSuccess(res.order);
+        }
+      } else {
+        setCheckStatusNotice(
+          'Payment not yet confirmed by the bank/gateway. If you just completed the payment, please allow 10–20 seconds for the bank network to settle and click again.'
+        );
+      }
+    } catch (err: any) {
+      setCheckStatusNotice('Unable to check payment status right now. Please try again in a few moments.');
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
   const handleVerifyUtr = async (e: React.FormEvent) => {
     e.preventDefault();
     setUtrError('');
@@ -159,17 +187,20 @@ export const PaymentQRModal: React.FC<PaymentQRModalProps> = ({
     setIsVerifyingUtr(true);
     try {
       const res = await famGatewayService.verifyUtr(orderId, clean);
-      if (res.success) {
+      if (res.success && res.isPaid) {
         setUtrSuccess('Payment verified successfully!');
         setIsPaid(true);
         setIsPolling(false);
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         if (onPaymentSuccess) {
-          onPaymentSuccess();
+          onPaymentSuccess(res.order);
         }
       } else {
-        setUtrError(res.error || 'Verification failed. Please check the UTR number.');
+        setUtrError(
+          res.error ||
+            'Could not verify transaction with the banking gateway. Please ensure the payment is completed and try again.'
+        );
       }
     } catch (err: any) {
       setUtrError(err.message || 'Verification failed. Please try again.');
@@ -321,15 +352,43 @@ export const PaymentQRModal: React.FC<PaymentQRModalProps> = ({
               </button>
             )}
 
-            {/* Live Auto-Polling Status Bar */}
-            <div className="p-3 bg-indigo-950/30 rounded-2xl border border-indigo-500/20 flex items-center space-x-3">
-              <div className="w-6 h-6 rounded-full bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
-                <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+            {/* Live Auto-Polling Status Bar & Instant Check Button */}
+            <div className="p-3 bg-indigo-950/30 rounded-2xl border border-indigo-500/20 space-y-2.5">
+              <div className="flex items-center space-x-3">
+                <div className="w-6 h-6 rounded-full bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                  <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                </div>
+                <div className="text-xs">
+                  <p className="font-semibold text-indigo-300">Auto-detecting payment...</p>
+                  <p className="text-[11px] text-slate-400">Screen will update automatically once bank approves.</p>
+                </div>
               </div>
-              <div className="text-xs">
-                <p className="font-semibold text-indigo-300">Auto-detecting payment...</p>
-                <p className="text-[11px] text-slate-400">Do not close this page. Screen will update automatically.</p>
-              </div>
+
+              {/* Instant Check Button */}
+              <button
+                type="button"
+                onClick={handleManualCheckStatus}
+                disabled={isCheckingStatus}
+                className="w-full py-2.5 px-3 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-200 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-2 transition cursor-pointer disabled:opacity-60"
+              >
+                {isCheckingStatus ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Verifying with Gateway...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>I Have Paid — Check Status Now</span>
+                  </>
+                )}
+              </button>
+
+              {checkStatusNotice && (
+                <p className="text-[11px] text-amber-300/90 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 leading-relaxed">
+                  {checkStatusNotice}
+                </p>
+              )}
             </div>
 
             {/* UPI ID Details for manual entry */}

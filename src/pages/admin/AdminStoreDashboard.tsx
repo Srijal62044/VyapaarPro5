@@ -146,22 +146,22 @@ export const AdminStoreDashboard: React.FC = () => {
           <span className="text-[10px] text-purple-400/80 mt-1 block">Code & Templates →</span>
         </Link>
 
-        {/* Pending Reviews */}
+        {/* Store Orders */}
         <Link
-          to="/admin/store/reviews"
-          className="bg-slate-900 border border-amber-500/30 hover:border-amber-500/60 p-5 rounded-2xl transition group col-span-2 lg:col-span-1"
+          to="/admin/store/orders"
+          className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 p-5 rounded-2xl transition group col-span-2 lg:col-span-1"
         >
-          <div className="flex items-center justify-between text-amber-400 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Payment Reviews</span>
-            <Clock className="w-4 h-4" />
+          <div className="flex items-center justify-between text-emerald-400 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Orders</span>
+            <ShoppingBag className="w-4 h-4" />
           </div>
-          <p className="text-2xl font-black text-amber-400">{stats?.pending_reviews ?? 0}</p>
-          <span className="text-[10px] text-amber-400/80 mt-1 block">Awaiting manual approval →</span>
+          <p className="text-2xl font-black text-white">{stats?.total_orders ?? 0}</p>
+          <span className="text-[10px] text-emerald-400/80 mt-1 block">Automatic Verification Active →</span>
         </Link>
       </div>
 
       {/* Quick Navigation Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <Link
           to="/admin/store/social-services"
           className="p-5 rounded-2xl bg-violet-950/20 border border-violet-500/30 hover:border-violet-500/60 transition group"
@@ -174,14 +174,14 @@ export const AdminStoreDashboard: React.FC = () => {
         </Link>
 
         <Link
-          to="/admin/store/reviews"
-          className="p-5 rounded-2xl bg-amber-950/20 border border-amber-500/30 hover:border-amber-500/60 transition group"
+          to="/admin/store/orders"
+          className="p-5 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 hover:border-emerald-500/60 transition group"
         >
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-amber-300 group-hover:text-amber-200">Payment Reviews</h3>
-            <ArrowRight className="w-4 h-4 text-amber-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition" />
+            <h3 className="text-sm font-bold text-emerald-300 group-hover:text-emerald-200">Store Orders</h3>
+            <ArrowRight className="w-4 h-4 text-emerald-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition" />
           </div>
-          <p className="text-xs text-amber-400/70 mt-1">Verify transactions and approve digital delivery.</p>
+          <p className="text-xs text-emerald-400/70 mt-1">Inspect transactions, customer receipts, and delivery packages.</p>
         </Link>
 
         <Link

@@ -54,7 +54,6 @@ import { AdminStoreProductEditPage } from './pages/admin/AdminStoreProductEditPa
 import { AdminStoreCategoriesPage } from './pages/admin/AdminStoreCategoriesPage';
 import { AdminStoreOrdersPage } from './pages/admin/AdminStoreOrdersPage';
 import { AdminStoreOrderDetailPage } from './pages/admin/AdminStoreOrderDetailPage';
-import { AdminStorePaymentReviewsPage } from './pages/admin/AdminStorePaymentReviewsPage';
 
 // Redirect helper for old client order links: /app/orders/:id -> /orders/:id
 const RedirectOldOrder: React.FC = () => {
@@ -133,7 +132,7 @@ export default function App() {
               <Route path="store" element={<AdminStoreDashboard />} />
               <Route path="store/social-services" element={<AdminStoreSocialServicesPage />} />
               <Route path="social-services" element={<AdminStoreSocialServicesPage />} />
-              <Route path="store/reviews" element={<AdminStorePaymentReviewsPage />} />
+              <Route path="store/reviews" element={<Navigate to="/admin/store/orders" replace />} />
               <Route path="store/products" element={<AdminStoreProductsPage />} />
               <Route path="store/products/new" element={<AdminStoreProductEditPage />} />
               <Route path="store/products/:id" element={<AdminStoreProductEditPage />} />

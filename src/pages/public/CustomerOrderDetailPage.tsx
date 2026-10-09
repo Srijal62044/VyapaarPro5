@@ -181,10 +181,9 @@ export const CustomerOrderDetailPage: React.FC = () => {
         <div className="p-5 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start space-x-3.5 shadow-lg">
           <Clock className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
           <div className="space-y-1">
-            <h4 className="font-bold text-white text-sm">Payment Under Manual Review</h4>
+            <h4 className="font-bold text-white text-sm">Awaiting Final Settlement Confirmation</h4>
             <p className="text-amber-200/80 leading-relaxed">
-              We have received your payment submission. Our admin team will verify your transaction against our bank statement.
-              Once approved, your delivery links, files, and activation instructions will unlock here automatically.
+              Your transaction is being confirmed by the banking network. Once settlement is recorded by the gateway, your delivery package, downloads, and activation instructions will unlock here automatically.
             </p>
           </div>
         </div>

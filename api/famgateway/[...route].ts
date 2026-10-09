@@ -115,33 +115,31 @@ export async function handleCreateOrder(req: any, res: any) {
       console.warn('[FamGateway] QRCode generation warning:', qrErr);
     }
 
-    let gatewayOrderId = '';
+    let gatewayOrderId = `FG_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     let gatewayPaymentUrl = '';
     let gatewayRawResponse: any = null;
 
     if (famApiKey) {
       try {
-        const payload = {
-          merchant_id: famMerchantId || undefined,
-          order_id: String(orderId || effectiveOrderNumber),
-          order_number: effectiveOrderNumber,
+        const payload: any = {
           amount: parsedAmount,
-          currency: 'INR',
-          customer_name: customerName || 'Customer',
-          customer_email: customerEmail || 'customer@example.com',
-          customer_phone: customerPhone || '9999999999',
-          purpose: purpose || `Payment for ${effectiveOrderNumber}`,
-          return_url: `${req.headers?.origin || 'https://viralpulse.in'}/store/payment-result?order_id=${encodeURIComponent(
+          redirect_url: `${req.headers?.origin || 'https://viralpulse.in'}/store/payment-result?order_id=${encodeURIComponent(
             String(orderId || effectiveOrderNumber)
           )}`,
+          order_id: String(orderId || effectiveOrderNumber),
         };
+        if (famMerchantId) {
+          payload.merchant_id = famMerchantId;
+        }
 
-        const famRes = await fetch('https://famgateway.com/api/v1/orders/create', {
+        // Official documented FamGateway create order endpoint
+        const famEndpoint = 'https://famgateway.in/api/create-order.php';
+        const famRes = await fetch(famEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${famApiKey}`,
-            'X-Api-Key': famApiKey,
+            Authorization: `Bearer ${famApiKey.trim()}`,
+            'X-Api-Key': famApiKey.trim(),
           },
           body: JSON.stringify(payload),
         });
@@ -149,8 +147,9 @@ export async function handleCreateOrder(req: any, res: any) {
         if (famRes.ok) {
           const json = await famRes.json();
           gatewayRawResponse = json;
-          gatewayOrderId = json.order_id || json.id || json.data?.order_id || '';
-          gatewayPaymentUrl = json.payment_url || json.qr_url || json.data?.payment_url || '';
+          const respData = json.response?.data || json.data || json;
+          gatewayOrderId = respData.order_id || respData.id || respData.transaction_id || gatewayOrderId;
+          gatewayPaymentUrl = respData.checkout_url || respData.payment_url || respData.qr_url || '';
         }
       } catch (famErr) {
         console.warn('[FamGateway] Direct gateway call notice, dynamic UPI fallback active:', famErr);
@@ -209,7 +208,7 @@ export async function handleCreateOrder(req: any, res: any) {
 }
 
 // -----------------------------------------------------------------------------
-// 2. ORDER STATUS POLLING HANDLER
+// 2. AUTOMATIC ORDER STATUS POLLING & VERIFICATION HANDLER
 // -----------------------------------------------------------------------------
 export async function handleOrderStatus(req: any, res: any) {
   try {
@@ -225,6 +224,7 @@ export async function handleOrderStatus(req: any, res: any) {
 
     const cleanId = String(orderId).trim();
     const supabase = getSupabaseClient();
+    const famApiKey = process.env.FAMGATEWAY_API_KEY;
 
     if (supabase) {
       let orderQuery = supabase.from('store_orders').select('*');
@@ -237,22 +237,112 @@ export async function handleOrderStatus(req: any, res: any) {
       const { data: order } = await orderQuery.maybeSingle();
 
       if (order) {
-        const isPaid =
+        // If already confirmed as PAID, immediately return SUCCESS
+        if (
           order.status === 'PAID' ||
           order.status === 'COMPLETED' ||
-          order.status === 'DELIVERED';
-        const isReview = order.status === 'PAYMENT_REVIEW';
+          order.status === 'DELIVERED'
+        ) {
+          return sendJsonResponse(res, 200, {
+            success: true,
+            status: 'SUCCESS',
+            isPaid: true,
+            order: {
+              id: order.id,
+              orderNumber: order.order_number,
+              status: order.status,
+              totalPaise: order.total_paise,
+            },
+          });
+        }
+
+        // Active automatic verification: Check gateway if FamGateway API key is set
+        if (famApiKey) {
+          const { data: latestPayment } = await supabase
+            .from('store_payments')
+            .select('*')
+            .eq('order_id', order.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const gatewayOrderId = latestPayment?.gateway_order_id || order.order_number;
+
+          if (gatewayOrderId) {
+            try {
+              const verifyUrl = `https://famgateway.in/api/verify-order.php?api_key=${encodeURIComponent(
+                famApiKey.trim()
+              )}&order_id=${encodeURIComponent(gatewayOrderId.trim())}`;
+
+              const gwRes = await fetch(verifyUrl, {
+                method: 'GET',
+                headers: {
+                  Authorization: `Bearer ${famApiKey.trim()}`,
+                  'X-Api-Key': famApiKey.trim(),
+                  Accept: 'application/json',
+                },
+              });
+
+              if (gwRes.ok) {
+                const gwData = await gwRes.json();
+                const gwStatus = String(gwData.status || gwData.data?.status || '').toLowerCase().trim();
+
+                if (gwStatus === 'success' || gwStatus === 'completed' || gwStatus === 'paid') {
+                  const txnId = gwData.data?.transaction_id || gwData.data?.utr || `TXN-${Date.now()}`;
+                  const utr = gwData.data?.utr || null;
+
+                  // Automatically update database to PAID
+                  await supabase
+                    .from('store_orders')
+                    .update({
+                      status: 'PAID',
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', order.id);
+
+                  if (latestPayment?.id) {
+                    await supabase
+                      .from('store_payments')
+                      .update({
+                        status: 'SUCCESS',
+                        gateway_payment_id: txnId,
+                        gateway_reference: utr || txnId,
+                        updated_at: new Date().toISOString(),
+                      })
+                      .eq('id', latestPayment.id);
+                  }
+
+                  return sendJsonResponse(res, 200, {
+                    success: true,
+                    status: 'SUCCESS',
+                    isPaid: true,
+                    order: {
+                      id: order.id,
+                      orderNumber: order.order_number,
+                      status: 'PAID',
+                      totalPaise: order.total_paise,
+                    },
+                    message: 'Payment verified automatically via FamGateway.',
+                  });
+                }
+              }
+            } catch (verifyErr) {
+              console.warn('[FamGateway order-status] verification call notice:', verifyErr);
+            }
+          }
+        }
 
         return sendJsonResponse(res, 200, {
           success: true,
-          status: isPaid ? 'SUCCESS' : isReview ? 'REVIEW' : 'PENDING',
-          isPaid,
+          status: 'PENDING',
+          isPaid: false,
           order: {
             id: order.id,
             orderNumber: order.order_number,
             status: order.status,
             totalPaise: order.total_paise,
           },
+          message: 'Awaiting settlement authorization from UPI network.',
         });
       }
     }
@@ -273,7 +363,7 @@ export async function handleOrderStatus(req: any, res: any) {
 }
 
 // -----------------------------------------------------------------------------
-// 3. VERIFY UTR / TRANSACTION ID HANDLER
+// 3. SECURE VERIFY HANDLER (Rejects Fake UTRs; Requires Gateway Confirmation)
 // -----------------------------------------------------------------------------
 export async function handleVerifyUtr(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -292,84 +382,134 @@ export async function handleVerifyUtr(req: any, res: any) {
       body = req.body || {};
     }
 
-    const { orderId, utr, transactionId, customerPhone } = body;
+    const { orderId, utr, transactionId } = body;
     const submittedUtr = String(utr || transactionId || '').trim();
 
     if (!orderId) {
       return sendJsonResponse(res, 400, { success: false, error: 'Order ID is required.' });
     }
-    if (!submittedUtr || submittedUtr.length < 6) {
-      return sendJsonResponse(res, 400, {
-        success: false,
-        error: 'Please enter a valid 12-digit UPI UTR or Transaction Reference number.',
+
+    const supabase = getSupabaseClient();
+    const famApiKey = process.env.FAMGATEWAY_API_KEY;
+
+    if (!supabase) {
+      return sendJsonResponse(res, 500, { success: false, error: 'Database service unavailable.' });
+    }
+
+    let orderQuery = supabase.from('store_orders').select('*');
+    if (isUuid(orderId)) {
+      orderQuery = orderQuery.eq('id', orderId);
+    } else {
+      orderQuery = orderQuery.or(`order_number.eq.${orderId},id.eq.${orderId}`);
+    }
+
+    const { data: order } = await orderQuery.maybeSingle();
+
+    if (!order) {
+      return sendJsonResponse(res, 404, { success: false, error: 'Order not found.' });
+    }
+
+    if (order.status === 'PAID' || order.status === 'COMPLETED' || order.status === 'DELIVERED') {
+      return sendJsonResponse(res, 200, {
+        success: true,
+        message: 'Payment already verified and confirmed!',
+        isPaid: true,
+        order: {
+          id: order.id,
+          orderNumber: order.order_number,
+          status: 'PAID',
+        },
       });
     }
 
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      let orderQuery = supabase.from('store_orders').select('*');
-      if (isUuid(orderId)) {
-        orderQuery = orderQuery.eq('id', orderId);
-      } else {
-        orderQuery = orderQuery.or(`order_number.eq.${orderId},id.eq.${orderId}`);
-      }
+    const { data: latestPayment } = await supabase
+      .from('store_payments')
+      .select('*')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      const { data: order } = await orderQuery.maybeSingle();
+    const gatewayOrderId = latestPayment?.gateway_order_id || order.order_number;
 
-      if (order) {
-        // Record verification in store_payments
-        await supabase.from('store_payments').insert({
-          order_id: order.id,
-          gateway_name: 'famgateway_manual_utr',
-          gateway_payment_id: submittedUtr,
-          amount_paise: order.total_paise,
-          currency: 'INR',
-          status: 'SUCCESS',
-          raw_response: {
-            utr: submittedUtr,
-            verified_at: new Date().toISOString(),
-            customerPhone: customerPhone || order.customer_phone,
+    // Check with FamGateway API - NEVER blindly trust user-submitted UTR
+    if (famApiKey && gatewayOrderId) {
+      try {
+        const verifyUrl = `https://famgateway.in/api/verify-order.php?api_key=${encodeURIComponent(
+          famApiKey.trim()
+        )}&order_id=${encodeURIComponent(gatewayOrderId.trim())}`;
+
+        const gwRes = await fetch(verifyUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${famApiKey.trim()}`,
+            'X-Api-Key': famApiKey.trim(),
+            Accept: 'application/json',
           },
         });
 
-        // Update order status to PAID
-        await supabase
-          .from('store_orders')
-          .update({
-            status: 'PAID',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', order.id);
+        if (gwRes.ok) {
+          const gwData = await gwRes.json();
+          const gwStatus = String(gwData.status || gwData.data?.status || '').toLowerCase().trim();
 
-        return sendJsonResponse(res, 200, {
-          success: true,
-          message: 'Payment verified and confirmed successfully!',
-          isPaid: true,
-          order: {
-            id: order.id,
-            orderNumber: order.order_number,
-            status: 'PAID',
-          },
-        });
+          if (gwStatus === 'success' || gwStatus === 'completed' || gwStatus === 'paid') {
+            const confirmedUtr = gwData.data?.utr || submittedUtr || `TXN-${Date.now()}`;
+
+            await supabase
+              .from('store_orders')
+              .update({
+                status: 'PAID',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', order.id);
+
+            if (latestPayment?.id) {
+              await supabase
+                .from('store_payments')
+                .update({
+                  status: 'SUCCESS',
+                  gateway_payment_id: confirmedUtr,
+                  gateway_reference: confirmedUtr,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', latestPayment.id);
+            }
+
+            return sendJsonResponse(res, 200, {
+              success: true,
+              message: 'Payment verified and confirmed successfully!',
+              isPaid: true,
+              order: {
+                id: order.id,
+                orderNumber: order.order_number,
+                status: 'PAID',
+              },
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn('[FamGateway verify-utr] gateway check notice:', err);
       }
     }
 
-    return sendJsonResponse(res, 200, {
-      success: true,
-      message: 'Payment verification recorded.',
-      isPaid: true,
+    // If FamGateway does not confirm the payment, REJECT IT! Fake UTRs will NOT pass!
+    return sendJsonResponse(res, 400, {
+      success: false,
+      isPaid: false,
+      error:
+        'Payment could not be verified by the banking gateway. If you just completed the payment, please allow 10–20 seconds for the bank to process and tap "Check Status" again.',
     });
   } catch (err: any) {
     console.error('[FamGateway verify-utr] error:', err);
     return sendJsonResponse(res, 500, {
       success: false,
-      error: err.message || 'Failed to verify UTR number.',
+      error: err.message || 'Failed to verify transaction.',
     });
   }
 }
 
 // -----------------------------------------------------------------------------
-// 4. WEBHOOK HANDLER
+// 4. WEBHOOK HANDLER (Instant Settlement from Gateway)
 // -----------------------------------------------------------------------------
 export async function handleWebhook(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -391,17 +531,20 @@ export async function handleWebhook(req: any, res: any) {
       payload?.orderId ||
       payload?.order_number ||
       payload?.data?.order_id;
-    const status = String(payload?.status || payload?.data?.status || 'SUCCESS').toUpperCase();
+    const rawStatus = String(payload?.status || payload?.data?.status || 'SUCCESS').toUpperCase();
 
-    console.log('[FamGateway Webhook] received:', { orderRef, status });
+    console.log('[FamGateway Webhook] received:', { orderRef, rawStatus });
 
     if (orderRef) {
       const supabase = getSupabaseClient();
       if (supabase) {
+        const isSuccess = rawStatus === 'SUCCESS' || rawStatus === 'COMPLETED' || rawStatus === 'PAID';
+        const finalStatus = isSuccess ? 'PAID' : rawStatus;
+
         let updateQuery = supabase
           .from('store_orders')
           .update({
-            status: status === 'SUCCESS' || status === 'COMPLETED' ? 'PAID' : status,
+            status: finalStatus,
             updated_at: new Date().toISOString(),
           });
 
@@ -412,6 +555,25 @@ export async function handleWebhook(req: any, res: any) {
         }
 
         await updateQuery;
+
+        if (isSuccess) {
+          // Also update corresponding store_payments record
+          let payQuery = supabase
+            .from('store_payments')
+            .update({
+              status: 'SUCCESS',
+              gateway_payment_id: payload?.data?.transaction_id || payload?.transaction_id || `TXN-${Date.now()}`,
+              gateway_reference: payload?.data?.utr || payload?.utr || null,
+              updated_at: new Date().toISOString(),
+            });
+
+          if (isUuid(orderRef)) {
+            payQuery = payQuery.eq('order_id', orderRef);
+          } else {
+            payQuery = payQuery.eq('gateway_order_id', orderRef);
+          }
+          await payQuery;
+        }
       }
     }
 

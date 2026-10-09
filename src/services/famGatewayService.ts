@@ -42,6 +42,7 @@ export interface OrderStatusResult {
   orderNumber?: string;
   status: string;
   paid: boolean;
+  isPaid?: boolean;
   order?: any;
   error?: string;
 }
@@ -51,6 +52,8 @@ export interface VerifyUtrResult {
   status?: string;
   orderId?: string;
   orderNumber?: string;
+  isPaid?: boolean;
+  order?: any;
   message?: string;
   error?: string;
 }
@@ -164,22 +167,30 @@ export const famGatewayService = {
       }
 
       const data = await res.json();
+      const isPaid = Boolean(
+        data.paid ||
+          data.isPaid ||
+          data.status === 'SUCCESS' ||
+          data.status === 'PAID' ||
+          data.status === 'DELIVERED'
+      );
       return {
         success: Boolean(data.success),
-        orderId: data.orderId,
-        orderNumber: data.orderNumber,
+        orderId: data.orderId || data.order?.id,
+        orderNumber: data.orderNumber || data.order?.order_number,
         status: data.status || 'PENDING',
-        paid: Boolean(data.paid || data.status === 'PAID' || data.status === 'DELIVERED'),
+        paid: isPaid,
+        isPaid,
         order: data.order,
       };
     } catch (err: any) {
       console.warn('Status poll warning:', err?.message);
-      return { success: false, status: 'PENDING', paid: false, error: err.message };
+      return { success: false, status: 'PENDING', paid: false, isPaid: false, error: err.message };
     }
   },
 
   /**
-   * Submits a 12-digit UPI UTR / Reference number for instant client confirmation
+   * Submits a 12-digit UPI UTR / Reference number for verification with the payment gateway
    */
   async verifyUtr(orderId: string, utr: string, senderName?: string): Promise<VerifyUtrResult> {
     try {
@@ -197,20 +208,23 @@ export const famGatewayService = {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to verify UPI reference number.');
+        throw new Error(data.error || 'Payment not verified by gateway. Please check the reference and try again.');
       }
 
       return {
         success: true,
+        isPaid: Boolean(data.isPaid || data.status === 'PAID' || data.status === 'SUCCESS'),
         status: data.status,
         orderId: data.orderId,
         orderNumber: data.orderNumber,
         message: data.message,
+        order: data.order,
       };
     } catch (err: any) {
       console.error('UTR verification error:', err);
       return {
         success: false,
+        isPaid: false,
         error: err.message || 'Could not verify UPI reference number.',
       };
     }
