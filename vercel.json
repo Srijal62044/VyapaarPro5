@@ -50,7 +50,15 @@
   "rewrites": [
     {
       "source": "/api/payments/famgateway/webhook",
-      "destination": "/api/famgateway-webhook"
+      "destination": "/api/famgateway/[...route]?route=webhook"
+    },
+    {
+      "source": "/api/famgateway-webhook",
+      "destination": "/api/famgateway/[...route]?route=webhook"
+    },
+    {
+      "source": "/api/famgateway/(.*)",
+      "destination": "/api/famgateway/[...route]?route=$1"
     },
     {
       "source": "/api/store/admin/review-order",

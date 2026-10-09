@@ -12,15 +12,17 @@ const __dirname = path.dirname(__filename);
 // Import API handlers
 import createOrderHandler from './api/store/create-order.ts';
 import paymentCreateHandler from './api/store/payment/create.ts';
-import famgatewayCreateOrderHandler from './api/famgateway/create-order.ts';
-import famgatewayOrderStatusHandler from './api/famgateway/order-status.ts';
-import famgatewayVerifyUtrHandler from './api/famgateway/verify-utr.ts';
+import famgatewayHandler, {
+  handleCreateOrder as famgatewayCreateOrderHandler,
+  handleOrderStatus as famgatewayOrderStatusHandler,
+  handleVerifyUtr as famgatewayVerifyUtrHandler,
+  handleWebhook as webhookHandler,
+} from './api/famgateway/[...route].ts';
 import {
   paymentVerifyHandler,
   downloadHandler,
   reviewOrderHandler,
 } from './api/store/[...route].ts';
-import webhookHandler from './api/famgateway-webhook.ts';
 import contactHandler from './api/contact.ts';
 import serviceRequestHandler from './api/service-request.ts';
 import rateLimitHandler from './api/rate-limit.ts';
@@ -64,6 +66,7 @@ app.all('/api/famgateway/verify-utr', adaptHandler(famgatewayVerifyUtrHandler));
 app.all('/api/famgateway/webhook', adaptHandler(webhookHandler));
 app.all('/api/famgateway-webhook', adaptHandler(webhookHandler));
 app.all('/api/payments/famgateway/webhook', adaptHandler(webhookHandler));
+app.all('/api/famgateway/*', adaptHandler(famgatewayHandler));
 app.all('/api/store/download', adaptHandler(downloadHandler));
 app.all('/api/store/admin/review-order', adaptHandler(reviewOrderHandler));
 app.all('/api/contact', adaptHandler(contactHandler));

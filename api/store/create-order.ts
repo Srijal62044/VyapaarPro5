@@ -482,7 +482,37 @@ export default async function handler(req: any, res: any) {
     order = resOrder.data;
     orderError = resOrder.error;
 
-    // Fallback 1: If RLS (42501), foreign key (23503), or permission error with user_id, retry with user_id = null
+    // Fallback 1: If column not found (PGRST204 / 42703 / column missing), retry with standard core columns only
+    if (
+      orderError &&
+      (orderError.code === 'PGRST204' ||
+        orderError.code === '42703' ||
+        orderError.message?.toLowerCase().includes('column') ||
+        orderError.message?.toLowerCase().includes('schema cache'))
+    ) {
+      console.warn('[create-order] Retrying with core store_orders columns:', orderError.message);
+      const corePayload: any = {
+        order_number: orderNumber,
+        customer_email: customerEmail.toLowerCase().trim(),
+        customer_name: (customerName || '').trim() || null,
+        customer_phone: (customerPhone || '').trim() || null,
+        total_paise: totalPaise,
+        currency: 'INR',
+        status: 'PAYMENT_PENDING',
+      };
+      if (validUserId) corePayload.user_id = validUserId;
+
+      const resCore = await supabase
+        .from('store_orders')
+        .insert(corePayload)
+        .select()
+        .maybeSingle();
+
+      order = resCore.data;
+      orderError = resCore.error;
+    }
+
+    // Fallback 2: If RLS (42501), foreign key (23503), or permission error with user_id, retry with user_id = null
     if (
       orderError &&
       (orderError.code === '42501' ||
@@ -495,7 +525,15 @@ export default async function handler(req: any, res: any) {
       console.warn('[create-order] Retrying order insert without user_id to satisfy RLS/FK constraint:', orderError.message);
       const resNoUser = await supabase
         .from('store_orders')
-        .insert({ ...baseOrderPayload, user_id: null })
+        .insert({
+          order_number: orderNumber,
+          customer_email: customerEmail.toLowerCase().trim(),
+          customer_name: (customerName || '').trim() || null,
+          customer_phone: (customerPhone || '').trim() || null,
+          total_paise: totalPaise,
+          currency: 'INR',
+          status: 'PAYMENT_PENDING',
+        })
         .select()
         .maybeSingle();
 
@@ -503,12 +541,20 @@ export default async function handler(req: any, res: any) {
       orderError = resNoUser.error;
     }
 
-    // Fallback 2: If status check constraint (code 23514), retry with CREATED
+    // Fallback 3: If status check constraint (code 23514), retry with CREATED
     if (orderError && (orderError.code === '23514' || orderError.message?.toLowerCase().includes('check constraint'))) {
       console.warn('[create-order] Retrying with status = CREATED');
       const resCreated = await supabase
         .from('store_orders')
-        .insert({ ...baseOrderPayload, status: 'CREATED', user_id: null })
+        .insert({
+          order_number: orderNumber,
+          customer_email: customerEmail.toLowerCase().trim(),
+          customer_name: (customerName || '').trim() || null,
+          customer_phone: (customerPhone || '').trim() || null,
+          total_paise: totalPaise,
+          currency: 'INR',
+          status: 'CREATED',
+        })
         .select()
         .maybeSingle();
 
@@ -516,7 +562,7 @@ export default async function handler(req: any, res: any) {
       orderError = resCreated.error;
     }
 
-    // Fallback 3: If database table fails or returns null, generate resilient order object
+    // Fallback 4: If database table fails or returns null, generate resilient order object
     if (!order) {
       console.warn('[create-order] Database insert unavailable, using resilient in-memory order:', orderError?.message);
       order = {
@@ -548,42 +594,51 @@ export default async function handler(req: any, res: any) {
     let orderItem: any = null;
     const safeProductId = isUuid(product.id) ? product.id : null;
 
-    const fullItemPayload = {
-      order_id: order.id,
-      product_id: safeProductId,
-      product_name_snapshot: product.name,
-      unit_price_paise: unitPricePaise,
-      quantity: parsedQty,
-      total_paise: totalPaise,
-      fields_snapshot: submittedData,
-    };
+    if (isUuid(order.id)) {
+      const fullItemPayload = {
+        order_id: order.id,
+        product_id: safeProductId,
+        product_name_snapshot: product.name,
+        unit_price_paise: unitPricePaise,
+        quantity: parsedQty,
+        total_paise: totalPaise,
+        fields_snapshot: submittedData,
+      };
 
-    let itemRes = await supabase
-      .from('store_order_items')
-      .insert(fullItemPayload)
-      .select()
-      .maybeSingle();
-
-    orderItem = itemRes.data;
-    let itemError = itemRes.error;
-
-    // Fallback: If foreign key error on product_id or fields_snapshot column missing
-    if (
-      itemError &&
-      (itemError.code === '23503' ||
-        itemError.code === '42501' ||
-        itemError.message?.toLowerCase().includes('product_id') ||
-        itemError.message?.toLowerCase().includes('foreign key'))
-    ) {
-      console.warn('[create-order] Retrying item insert without product_id FK');
-      const itemResNoProd = await supabase
+      let itemRes = await supabase
         .from('store_order_items')
-        .insert({ ...fullItemPayload, product_id: null })
+        .insert(fullItemPayload)
         .select()
         .maybeSingle();
 
-      orderItem = itemResNoProd.data;
-      itemError = itemResNoProd.error;
+      orderItem = itemRes.data;
+      let itemError = itemRes.error;
+
+      // Fallback: If foreign key error on product_id or fields_snapshot column missing
+      if (
+        itemError &&
+        (itemError.code === '23503' ||
+          itemError.code === '42501' ||
+          itemError.code === 'PGRST204' ||
+          itemError.message?.toLowerCase().includes('product_id') ||
+          itemError.message?.toLowerCase().includes('column') ||
+          itemError.message?.toLowerCase().includes('foreign key'))
+      ) {
+        console.warn('[create-order] Retrying item insert without product_id FK');
+        const itemResNoProd = await supabase
+          .from('store_order_items')
+          .insert({
+            order_id: order.id,
+            product_name_snapshot: product.name,
+            unit_price_paise: unitPricePaise,
+            quantity: parsedQty,
+            total_paise: totalPaise,
+          })
+          .select()
+          .maybeSingle();
+
+        orderItem = itemResNoProd.data;
+      }
     }
 
     if (!orderItem) {
