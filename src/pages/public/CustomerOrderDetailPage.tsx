@@ -19,30 +19,83 @@ import {
 } from 'lucide-react';
 import { StoreOrder } from '../../types';
 import { storeDataService } from '../../services/storeDataService';
+import { famGatewayService } from '../../services/famGatewayService';
 import { SEO } from '../../components/common/SEO';
 import { StoreProductDeliveryDetails } from '../../components/store/StoreProductDeliveryDetails';
 import { SocialServiceOrderCard } from '../../components/store/SocialServiceOrderCard';
+import { PaymentQRModal } from '../../components/payment/PaymentQRModal';
 
 export const CustomerOrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [order, setOrder] = useState<StoreOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitializingPayment, setIsInitializingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+
+  // Payment QR modal state
+  const [qrModalData, setQrModalData] = useState<{
+    isOpen: boolean;
+    orderId: string;
+    orderNumber: string;
+    amount: number;
+    upiUrl?: string;
+    qrUrl?: string;
+    merchantVpa?: string;
+    merchantName?: string;
+  } | null>(null);
+
+  const loadOrder = async () => {
+    if (!id) return;
+    try {
+      const data = await storeDataService.getOrderById(id);
+      setOrder(data);
+    } catch (err) {
+      console.error('Failed to load order:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function load() {
-      if (!id) return;
-      setIsLoading(true);
-      try {
-        const data = await storeDataService.getOrderById(id);
-        setOrder(data);
-      } catch (err) {
-        console.error('Failed to load order:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    load();
+    loadOrder();
   }, [id]);
+
+  const handlePayNow = async () => {
+    if (!order) return;
+    setIsInitializingPayment(true);
+    setPaymentError('');
+
+    try {
+      const priceRupees = Math.round(order.total_paise / 100);
+      const sessionResult = await famGatewayService.createCheckoutSession({
+        order,
+        customer: {
+          name: order.customer_name || 'Customer',
+          email: order.customer_email || '',
+          phone: order.customer_phone,
+        },
+      });
+
+      if (sessionResult.success) {
+        setQrModalData({
+          isOpen: true,
+          orderId: order.id,
+          orderNumber: order.order_number,
+          amount: priceRupees,
+          upiUrl: sessionResult.upiUrl,
+          qrUrl: sessionResult.qrUrl,
+          merchantVpa: sessionResult.merchantVpa,
+          merchantName: sessionResult.merchantName,
+        });
+      } else {
+        setPaymentError(sessionResult.error || 'Failed to initialize payment gateway.');
+      }
+    } catch (err: any) {
+      setPaymentError(err.message || 'Payment initialization failed.');
+    } finally {
+      setIsInitializingPayment(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -137,6 +190,37 @@ export const CustomerOrderDetailPage: React.FC = () => {
         </div>
       )}
 
+      {/* Payment Pending Action Banner */}
+      {!isPaidOrDelivered && !isUnderReview && (
+        <div className="p-6 rounded-3xl bg-indigo-950/40 border border-indigo-500/30 text-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <h4 className="font-bold text-white text-base">Payment Required</h4>
+            </div>
+            <p className="text-xs text-slate-300">
+              Complete your payment of <span className="font-bold text-white">₹{priceRupees}</span> via FamGateway UPI to unlock access and delivery instantly.
+            </p>
+            {paymentError && <p className="text-xs text-rose-400 mt-1">{paymentError}</p>}
+          </div>
+
+          <button
+            onClick={handlePayNow}
+            disabled={isInitializingPayment}
+            className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/25 flex items-center justify-center space-x-2 transition cursor-pointer shrink-0 disabled:opacity-50"
+          >
+            {isInitializingPayment ? (
+              <span>Preparing UPI QR...</span>
+            ) : (
+              <>
+                <CreditCard className="w-4 h-4" />
+                <span>Pay ₹{priceRupees} via UPI QR</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Social Service Dynamic Ordering Details Snapshot */}
       <SocialServiceOrderCard order={order} isAdminView={false} />
 
@@ -197,6 +281,27 @@ export const CustomerOrderDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* In-Page Dynamic UPI QR Modal */}
+      {qrModalData && (
+        <PaymentQRModal
+          isOpen={qrModalData.isOpen}
+          onClose={() => setQrModalData(null)}
+          orderId={qrModalData.orderId}
+          orderNumber={qrModalData.orderNumber}
+          amount={qrModalData.amount}
+          upiUrl={qrModalData.upiUrl}
+          qrUrl={qrModalData.qrUrl}
+          merchantVpa={qrModalData.merchantVpa}
+          merchantName={qrModalData.merchantName}
+          title={`Pay ₹${qrModalData.amount} for Order ${order.order_number}`}
+          subtitle="Scan the QR in your UPI app or tap Open in UPI App."
+          onPaymentSuccess={() => {
+            setQrModalData(null);
+            loadOrder();
+          }}
+        />
+      )}
     </div>
   );
 };

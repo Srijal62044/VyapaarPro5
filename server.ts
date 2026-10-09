@@ -12,6 +12,9 @@ const __dirname = path.dirname(__filename);
 // Import API handlers
 import createOrderHandler from './api/store/create-order.ts';
 import paymentCreateHandler from './api/store/payment/create.ts';
+import famgatewayCreateOrderHandler from './api/famgateway/create-order.ts';
+import famgatewayOrderStatusHandler from './api/famgateway/order-status.ts';
+import famgatewayVerifyUtrHandler from './api/famgateway/verify-utr.ts';
 import {
   paymentVerifyHandler,
   downloadHandler,
@@ -54,10 +57,15 @@ const adaptHandler = (handler: any) => async (req: express.Request, res: express
 app.all('/api/store/create-order', adaptHandler(createOrderHandler));
 app.all('/api/store/payment/create', adaptHandler(paymentCreateHandler));
 app.all('/api/store/payment/verify', adaptHandler(paymentVerifyHandler));
-app.all('/api/store/download', adaptHandler(downloadHandler));
-app.all('/api/store/admin/review-order', adaptHandler(reviewOrderHandler));
+app.all('/api/famgateway/create-order', adaptHandler(famgatewayCreateOrderHandler));
+app.all('/api/famgateway/order-status/:orderId', adaptHandler(famgatewayOrderStatusHandler));
+app.all('/api/famgateway/order-status', adaptHandler(famgatewayOrderStatusHandler));
+app.all('/api/famgateway/verify-utr', adaptHandler(famgatewayVerifyUtrHandler));
+app.all('/api/famgateway/webhook', adaptHandler(webhookHandler));
 app.all('/api/famgateway-webhook', adaptHandler(webhookHandler));
 app.all('/api/payments/famgateway/webhook', adaptHandler(webhookHandler));
+app.all('/api/store/download', adaptHandler(downloadHandler));
+app.all('/api/store/admin/review-order', adaptHandler(reviewOrderHandler));
 app.all('/api/contact', adaptHandler(contactHandler));
 app.all('/api/service-request', adaptHandler(serviceRequestHandler));
 app.all('/api/rate-limit', adaptHandler(rateLimitHandler));

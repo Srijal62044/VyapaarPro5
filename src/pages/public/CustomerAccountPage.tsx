@@ -11,18 +11,21 @@ import {
   Shield,
   Clock,
   ArrowRight,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { dataService } from '../../services/store';
 import { storeDataService } from '../../services/storeDataService';
 import { ServiceRequest, StoreOrder } from '../../types';
 import { SEO } from '../../components/common/SEO';
+import { AddFundsModal } from '../../components/payment/AddFundsModal';
 
 export const CustomerAccountPage: React.FC = () => {
   const { profile, isAdmin, logout } = useAuth();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [orders, setOrders] = useState<StoreOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAddFundsOpen, setIsAddFundsOpen] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -95,6 +98,13 @@ export const CustomerAccountPage: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-3 w-full sm:w-auto">
+          <button
+            onClick={() => setIsAddFundsOpen(true)}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold transition flex items-center space-x-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
+          >
+            <Wallet className="w-3.5 h-3.5" />
+            <span>Add Funds (UPI QR)</span>
+          </button>
           {isAdmin && (
             <Link
               to="/admin"
@@ -178,6 +188,16 @@ export const CustomerAccountPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* In-Page Zero-Redirect Add Funds Modal */}
+      <AddFundsModal
+        isOpen={isAddFundsOpen}
+        onClose={() => setIsAddFundsOpen(false)}
+        onFundsAdded={(amt) => {
+          setIsAddFundsOpen(false);
+          // Optional toast or reload
+        }}
+      />
     </div>
   );
 };

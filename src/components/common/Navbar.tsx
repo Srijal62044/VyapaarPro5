@@ -12,6 +12,7 @@ import {
   LogOut,
   Layers,
   Phone,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -64,14 +65,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
             {navLinks.map((link) => (
               <Link
                 key={link.href}
-                to={link.href}
-                className={`px-3.5 py-2 rounded-xl text-sm font-medium transition ${
+                to={profile ? link.href : `/login?redirect=${encodeURIComponent(link.href)}`}
+                className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition flex items-center space-x-1.5 ${
                   isActive(link.href)
                     ? 'text-indigo-400 bg-indigo-500/10'
                     : 'text-slate-300 hover:text-white hover:bg-slate-900'
                 }`}
+                title={!profile ? 'Sign in required to explore ' + link.label : undefined}
               >
-                {link.label}
+                {!profile && <Lock className="w-3 h-3 text-amber-400/80 shrink-0" />}
+                <span>{link.label}</span>
               </Link>
             ))}
           </nav>
@@ -109,39 +112,59 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
 
                 <button
                   onClick={logout}
-                  className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
-                  title="Sign out"
+                  className="p-2 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                  title="Sign out (Lock website)"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
             ) : (
-              <Link
-                to="/login"
-                className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-900 rounded-xl transition"
-              >
-                Sign In
-              </Link>
+              <div className="flex items-center space-x-2">
+                <Link
+                  to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-900 rounded-xl transition"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  to={`/register?redirect=${encodeURIComponent(location.pathname)}`}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition flex items-center space-x-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Sign Up</span>
+                </Link>
+              </div>
             )}
 
-            {/* Get Started CTA */}
-            <button
-              onClick={onOpenGetStarted}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center space-x-2"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Get Started</span>
-            </button>
+            {/* Get Started CTA (Only active for logged in users, otherwise directs to login) */}
+            {profile ? (
+              <button
+                onClick={onOpenGetStarted}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/25 transition cursor-pointer flex items-center space-x-2"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Get Started</span>
+              </button>
+            ) : null}
           </div>
 
           {/* Mobile hamburger button */}
           <div className="flex items-center space-x-2 lg:hidden">
-            <button
-              onClick={onOpenGetStarted}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium"
-            >
-              Get Started
-            </button>
+            {!profile ? (
+              <Link
+                to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium"
+              >
+                Sign In
+              </Link>
+            ) : (
+              <button
+                onClick={onOpenGetStarted}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium"
+              >
+                Get Started
+              </button>
+            )}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900"
@@ -159,15 +182,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
             {navLinks.map((link) => (
               <Link
                 key={link.href}
-                to={link.href}
+                to={profile ? link.href : `/login?redirect=${encodeURIComponent(link.href)}`}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`block px-3.5 py-2.5 rounded-xl text-base font-medium ${
+                className={`block px-3.5 py-2.5 rounded-xl text-base font-medium flex items-center justify-between ${
                   isActive(link.href)
                     ? 'text-indigo-400 bg-indigo-500/10'
                     : 'text-slate-300 hover:text-white hover:bg-slate-900'
                 }`}
               >
-                {link.label}
+                <span>{link.label}</span>
+                {!profile && <Lock className="w-3.5 h-3.5 text-amber-400" />}
               </Link>
             ))}
           </nav>
@@ -206,19 +230,28 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGetStarted }) => {
                     logout();
                     setMobileMenuOpen(false);
                   }}
-                  className="block w-full py-2 text-center text-slate-400 text-xs cursor-pointer"
+                  className="block w-full py-2 text-center text-slate-400 text-xs cursor-pointer hover:text-rose-400"
                 >
                   Sign Out ({profile.email})
                 </button>
               </div>
             ) : (
-              <Link
-                to="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block w-full py-2.5 px-4 text-center rounded-xl bg-slate-900 text-white font-medium text-sm border border-slate-800"
-              >
-                Sign In / Account
-              </Link>
+              <div className="space-y-2">
+                <Link
+                  to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block w-full py-2.5 px-4 text-center rounded-xl bg-indigo-600 text-white font-medium text-sm"
+                >
+                  Sign In to Explore Website
+                </Link>
+                <Link
+                  to={`/register?redirect=${encodeURIComponent(location.pathname)}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block w-full py-2.5 px-4 text-center rounded-xl bg-slate-900 text-slate-200 font-medium text-sm border border-slate-800"
+                >
+                  Create New Account (Sign Up)
+                </Link>
+              </div>
             )}
           </div>
         </div>

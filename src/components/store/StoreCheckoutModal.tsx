@@ -27,6 +27,8 @@ import {
   validateOrderingFields,
   calculateServicePrice,
 } from '../../services/socialServiceFields';
+import { supabase } from '../../lib/supabase';
+import { PaymentQRModal } from '../payment/PaymentQRModal';
 
 interface StoreCheckoutModalProps {
   product: StoreProduct | null;
@@ -55,6 +57,18 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successOrder, setSuccessOrder] = useState<StoreOrder | null>(null);
+
+  // In-Page Dynamic UPI QR Modal state (zero external redirects)
+  const [qrModalData, setQrModalData] = useState<{
+    isOpen: boolean;
+    orderId: string;
+    orderNumber: string;
+    amount: number;
+    upiUrl?: string;
+    qrUrl?: string;
+    merchantVpa?: string;
+    merchantName?: string;
+  } | null>(null);
 
   // Derive dynamic fields for selected product
   const effectiveFields: SocialServiceFieldConfig[] = product
@@ -186,9 +200,22 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
       try {
         console.log('[checkout] create-order request started');
+
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (supabase) {
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (sessionData?.session?.access_token) {
+              headers['Authorization'] = `Bearer ${sessionData.session.access_token}`;
+            }
+          } catch {
+            // Ignore session read error
+          }
+        }
+
         const orderRes = await fetch('/api/store/create-order', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             productId: product.id,
             quantity,
@@ -250,18 +277,22 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
 
       console.log('[checkout] payment/create response received', { success: sessionResult.success });
 
-      if (sessionResult.success && sessionResult.paymentUrl) {
-        window.location.href = sessionResult.paymentUrl;
+      if (sessionResult.success) {
+        // Zero external redirects: Render dynamic UPI QR modal directly in-page
+        setQrModalData({
+          isOpen: true,
+          orderId: order.id,
+          orderNumber: order.order_number,
+          amount: totalRupees,
+          upiUrl: sessionResult.upiUrl,
+          qrUrl: sessionResult.qrUrl,
+          merchantVpa: sessionResult.merchantVpa,
+          merchantName: sessionResult.merchantName,
+        });
         return;
       }
 
-      if (!sessionResult.success) {
-        throw new Error(sessionResult.error || 'Payment gateway session could not be initialized.');
-      }
-
-      // 6. If gateway is waiting or under review, redirect to payment status result page
-      navigate(`/store/payment-result?order_id=${encodeURIComponent(order.id)}`);
-      return;
+      throw new Error(sessionResult.error || 'Payment gateway session could not be initialized.');
     } catch (err: any) {
       console.error('Checkout error:', err);
       setErrorMessage(err.message || 'An error occurred during checkout. Please try again.');
@@ -579,6 +610,33 @@ export const StoreCheckoutModal: React.FC<StoreCheckoutModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Embedded Zero-Redirect Dynamic UPI QR Modal */}
+      {qrModalData && (
+        <PaymentQRModal
+          isOpen={qrModalData.isOpen}
+          onClose={() => {
+            setQrModalData(null);
+          }}
+          orderId={qrModalData.orderId}
+          orderNumber={qrModalData.orderNumber}
+          amount={qrModalData.amount}
+          upiUrl={qrModalData.upiUrl}
+          qrUrl={qrModalData.qrUrl}
+          merchantVpa={qrModalData.merchantVpa}
+          merchantName={qrModalData.merchantName}
+          title={`Pay ₹${qrModalData.amount} for ${product.name}`}
+          subtitle="Scan the QR code in any UPI app or tap Open in UPI App on mobile."
+          onPaymentSuccess={(confirmedOrder) => {
+            setQrModalData(null);
+            if (confirmedOrder) {
+              setSuccessOrder(confirmedOrder);
+            } else {
+              navigate(`/store/payment-result?order_id=${encodeURIComponent(qrModalData.orderId)}`);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
